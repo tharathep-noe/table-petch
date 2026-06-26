@@ -72,10 +72,36 @@ table-petch/
         ├── index.html       #    HTML entry + Content-Security-Policy
         └── src/
             ├── main.tsx     #    React mount point
-            ├── App.tsx      #    top-level UI: sidebar + grid
-            ├── styles.css   #    app styles
-            └── global.d.ts  #    types `window.api` for the renderer
+            ├── styles.css   #    Tailwind import + theme tokens
+            ├── global.d.ts  #    types `window.api` for the renderer
+            ├── lib/         #    framework-free helpers (editState.ts)
+            ├── pages/       #    App.tsx — orchestration & state only
+            └── components/  #    atomic-design UI layers (see below)
+                ├── atoms/       #    Button, Input, Select
+                ├── molecules/   #    Field, Modal, Menu, Tab
+                ├── organisms/   #    Sidebar, Toolbar, TabBar, SqlEditor,
+                │                #    DataGrid, ConnectionModal
+                └── templates/   #    AppLayout (sidebar + main shell)
 ```
+
+### UI is organized by atomic design
+
+Build UI from the smallest reusable pieces up:
+
+- **atoms** — single styled primitives (`Button`, `Input`, `Select`). No app logic.
+- **molecules** — small combinations of atoms (`Field` = label + input,
+  `Modal`, `Menu`, `Tab`).
+- **organisms** — self-contained feature sections (`Sidebar`, `DataGrid`,
+  `SqlEditor`, `ConnectionModal`, `Toolbar`, `TabBar`). They compose
+  molecules/atoms and take callbacks via props.
+- **templates** — page skeletons that arrange organisms (`AppLayout`).
+- **pages** — `App.tsx` owns all state and wires organisms together; it holds
+  almost no markup of its own.
+
+Rule of thumb: **reach for an existing atom before writing raw Tailwind.** If you
+find yourself repeating a class string (a button, an input, a dialog), it
+belongs in `atoms/` or `molecules/`. Data and state flow **down** from
+`pages/App.tsx` through props; events flow **up** through callbacks.
 
 ## The one rule to remember
 

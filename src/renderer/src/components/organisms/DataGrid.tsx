@@ -18,7 +18,10 @@ import {
   type Edits,
   isDirty,
   setEdit,
-} from "./editState";
+} from "../../lib/editState";
+import { Button } from "../atoms/Button";
+import { Menu, type MenuItemDef } from "../molecules/Menu";
+import { Modal } from "../molecules/Modal";
 
 interface Props {
   connectionId: string;
@@ -47,16 +50,9 @@ function buildColumnDefs(columns: ColumnMeta[]): ColumnDef<Row>[] {
 const cellCls =
   "border border-border px-2 py-1 text-left whitespace-nowrap max-w-[360px] overflow-hidden text-ellipsis [font-variant-numeric:tabular-nums]";
 
-export function EditableGrid({
-  connectionId,
-  result,
-  onReload,
-}: Props): JSX.Element {
+export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element {
   const editable = result.editable && !!result.table;
-  const columns = useMemo(
-    () => buildColumnDefs(result.columns),
-    [result.columns],
-  );
+  const columns = useMemo(() => buildColumnDefs(result.columns), [result.columns]);
   const table = useReactTable({
     data: result.rows,
     columns,
@@ -203,6 +199,22 @@ export function EditableGrid({
     }
   }
 
+  const menuItems = (m: CellMenu): MenuItemDef[] => {
+    const items: MenuItemDef[] = [];
+    if (m.col && colMeta.get(m.col)?.nullable) {
+      items.push({ label: "Set NULL", onClick: () => setNull({ row: m.row, col: m.col }) });
+    }
+    items.push({
+      label: deleted.has(m.row) ? "Undo delete" : "Delete row",
+      danger: true,
+      onClick: () => {
+        toggleDelete(selected.size > 0 ? selected : [m.row]);
+        setMenu(null);
+      },
+    });
+    return items;
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div
@@ -213,9 +225,7 @@ export function EditableGrid({
         <table className="border-collapse w-full">
           <thead>
             <tr>
-              <th
-                className={`${cellCls} bg-panel sticky top-0 left-0 z-10 w-10 text-muted`}
-              >
+              <th className={`${cellCls} bg-panel sticky top-0 left-0 z-10 w-10 text-muted`}>
                 #
               </th>
               {table.getFlatHeaders().map((h) => {
@@ -258,31 +268,20 @@ export function EditableGrid({
                     const original = cell.getValue() as CellValue;
                     const val = cellValue(edits, ri, colName, original);
                     const dirty = isDirty(edits, ri, colName);
-                    const isEditing =
-                      editing?.row === ri && editing?.col === colName;
-                    const isFocused =
-                      focused?.row === ri && focused?.col === colName;
+                    const isEditing = editing?.row === ri && editing?.col === colName;
+                    const isFocused = focused?.row === ri && focused?.col === colName;
                     return (
                       <td
                         key={cell.id}
                         className={`${cellCls} ${dirty ? "bg-accent/20" : ""} ${
                           isFocused ? "ring-1 ring-accent ring-inset" : ""
                         } ${isDel ? "line-through" : ""}`}
-                        onClick={() =>
-                          editable && setFocused({ row: ri, col: colName })
-                        }
-                        onDoubleClick={() =>
-                          startEdit({ row: ri, col: colName })
-                        }
+                        onClick={() => editable && setFocused({ row: ri, col: colName })}
+                        onDoubleClick={() => startEdit({ row: ri, col: colName })}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setFocused({ row: ri, col: colName });
-                          setMenu({
-                            x: e.clientX,
-                            y: e.clientY,
-                            row: ri,
-                            col: colName,
-                          });
+                          setMenu({ x: e.clientX, y: e.clientY, row: ri, col: colName });
                         }}
                       >
                         {isEditing ? (
@@ -294,9 +293,7 @@ export function EditableGrid({
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.preventDefault();
-                                commitEdit(
-                                  (e.target as HTMLInputElement).value,
-                                );
+                                commitEdit((e.target as HTMLInputElement).value);
                               } else if (e.key === "Escape") {
                                 e.preventDefault();
                                 setEditing(null);
@@ -327,49 +324,17 @@ export function EditableGrid({
           </span>
           {commitError && <span className="text-danger">{commitError}</span>}
           <div className="ml-auto flex gap-2">
-            <button
-              className="bg-transparent text-text border border-border rounded px-2.5 py-1 cursor-pointer hover:bg-border"
-              onClick={discard}
-              disabled={committing}
-            >
+            <Button variant="ghost" className="py-1" onClick={discard} disabled={committing}>
               Discard
-            </button>
-            <button
-              className="bg-accent text-white rounded px-2.5 py-1 cursor-pointer disabled:opacity-50"
-              onClick={commit}
-              disabled={committing}
-              title="Cmd/Ctrl+S"
-            >
+            </Button>
+            <Button className="py-1" onClick={commit} disabled={committing} title="Cmd/Ctrl+S">
               {committing ? "Committing…" : "Commit"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {menu && (
-        <div
-          className="fixed z-20 bg-panel border border-border rounded-md p-1 min-w-[150px] shadow-xl"
-          style={{ left: menu.x, top: menu.y }}
-        >
-          {menu.col && colMeta.get(menu.col)?.nullable && (
-            <div
-              className="px-2.5 py-1.5 rounded cursor-pointer hover:bg-border"
-              onClick={() => setNull({ row: menu.row, col: menu.col })}
-            >
-              Set NULL
-            </div>
-          )}
-          <div
-            className="px-2.5 py-1.5 rounded cursor-pointer hover:bg-border text-danger"
-            onClick={() => {
-              toggleDelete(selected.size > 0 ? selected : [menu.row]);
-              setMenu(null);
-            }}
-          >
-            {deleted.has(menu.row) ? "Undo delete" : "Delete row"}
-          </div>
-        </div>
-      )}
+      {menu && <Menu x={menu.x} y={menu.y} items={menuItems(menu)} />}
 
       {warning && (
         <WarningDialog
@@ -397,48 +362,30 @@ function WarningDialog({
   const [showSql, setShowSql] = useState(false);
   const warned = warning.statements.filter((s) => s.warning);
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-30"
-      onMouseDown={onCancel}
-    >
-      <div
-        className="bg-panel border border-border rounded-[10px] p-5 w-[520px] max-h-[80vh] overflow-y-auto"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h2 className="m-0 mb-3 text-base text-danger">
-          ⚠️ Some rows can't be uniquely identified
-        </h2>
-        <p className="text-muted mb-3">
-          {warned.length} statement{warned.length !== 1 && "s"} match on all
-          column values and may affect more than one row. Commit anyway?
-        </p>
-        <button
-          className="bg-transparent text-text border border-border rounded px-2.5 py-1 cursor-pointer hover:bg-border mb-2"
-          onClick={() => setShowSql((s) => !s)}
-        >
-          {showSql ? "Hide SQL" : "View SQL"}
-        </button>
-        {showSql && (
-          <pre className="bg-bg border border-border rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-            {warning.statements.map((s) => `${s.sql};`).join("\n")}
-          </pre>
-        )}
-        <div className="flex justify-end gap-2 mt-4">
-          <button
-            className="bg-transparent text-text border border-border rounded px-2.5 py-1.5 cursor-pointer hover:bg-border"
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            className="bg-accent text-white rounded px-2.5 py-1.5 cursor-pointer disabled:opacity-50"
-            onClick={onConfirm}
-            disabled={committing}
-          >
-            {committing ? "Committing…" : "Commit anyway"}
-          </button>
-        </div>
+    <Modal width={520} onClose={onCancel}>
+      <h2 className="m-0 mb-3 text-base text-danger">
+        ⚠️ Some rows can't be uniquely identified
+      </h2>
+      <p className="text-muted mb-3">
+        {warned.length} statement{warned.length !== 1 && "s"} match on all column
+        values and may affect more than one row. Commit anyway?
+      </p>
+      <Button variant="ghost" className="py-1 mb-2" onClick={() => setShowSql((s) => !s)}>
+        {showSql ? "Hide SQL" : "View SQL"}
+      </Button>
+      {showSql && (
+        <pre className="bg-bg border border-border rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap">
+          {warning.statements.map((s) => `${s.sql};`).join("\n")}
+        </pre>
+      )}
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onConfirm} disabled={committing}>
+          {committing ? "Committing…" : "Commit anyway"}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
