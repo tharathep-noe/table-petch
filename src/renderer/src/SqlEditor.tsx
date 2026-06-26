@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { sql, PostgreSQL } from '@codemirror/lang-sql'
 import { keymap, EditorView } from '@codemirror/view'
+import { Prec } from '@codemirror/state'
 import type { QueryResult } from '@shared/types'
 
 interface Props {
@@ -52,9 +53,13 @@ export function SqlEditor({
 
   const extensions = [
     sql({ dialect: PostgreSQL, schema, upperCaseKeywords: false }),
-    keymap.of([
-      { key: 'Mod-Enter', preventDefault: true, run: () => (runRef.current(), true) }
-    ]),
+    // Highest precedence so Cmd/Ctrl+Enter always runs, beating default keymaps.
+    Prec.highest(
+      keymap.of([
+        { key: 'Mod-Enter', preventDefault: true, run: () => (runRef.current(), true) },
+        { key: 'Shift-Mod-Enter', preventDefault: true, run: () => (runRef.current(), true) }
+      ])
+    ),
     EditorView.lineWrapping
   ]
 

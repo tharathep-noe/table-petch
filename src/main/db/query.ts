@@ -1,5 +1,5 @@
 import type { FieldDef } from 'pg'
-import { getPool } from './manager'
+import { ensureConnected } from './manager'
 import { getColumns } from './introspect'
 import type { ColumnMeta, LoadRowsRequest, QueryResult, TableRef } from '@shared/types'
 
@@ -8,7 +8,7 @@ const qualified = (t: TableRef): string => `${ident(t.schema)}.${ident(t.name)}`
 
 /** Paged read of a single table — the table browser's read path. */
 export async function loadRows(req: LoadRowsRequest): Promise<QueryResult> {
-  const pool = getPool(req.connectionId)
+  const pool = await ensureConnected(req.connectionId)
   const { columns, uniqueKeys } = await getColumns(req.connectionId, req.table)
 
   const order = req.orderBy
@@ -30,7 +30,7 @@ export async function loadRows(req: LoadRowsRequest): Promise<QueryResult> {
 /** Arbitrary SQL from the editor. Results are editable only for simple
  *  single-table selects (detected heuristically; refined later). */
 export async function runQuery(connectionId: string, sql: string): Promise<QueryResult> {
-  const pool = getPool(connectionId)
+  const pool = await ensureConnected(connectionId)
   const res = await pool.query({ text: sql, rowMode: 'array' })
 
   const columns: ColumnMeta[] = (res.fields ?? []).map((f: FieldDef) => ({

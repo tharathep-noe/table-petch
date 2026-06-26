@@ -1,4 +1,4 @@
-import { getPool } from './manager'
+import { ensureConnected } from './manager'
 import type {
   Change,
   CommitResult,
@@ -78,7 +78,7 @@ export async function commitChanges(
   connectionId: string,
   changes: Change[]
 ): Promise<CommitResult> {
-  const pool = getPool(connectionId)
+  const pool = await ensureConnected(connectionId)
   const client = await pool.connect()
   let applied = 0
   try {

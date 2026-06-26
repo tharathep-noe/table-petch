@@ -246,6 +246,8 @@ export function App(): JSX.Element {
         <div className="flex-1 overflow-hidden">
           {result && activeId ? (
             <EditableGrid connectionId={activeId} result={result} onReload={reload} />
+          ) : error ? (
+            <div className="p-6 text-danger whitespace-pre-wrap">{error}</div>
           ) : (
             <div className="text-muted p-6">Select a table or run a query.</div>
           )}

@@ -28,15 +28,20 @@ function poolConfig(input: {
   }
 }
 
+// Remember which database each connection is on, so we can transparently
+// re-establish a pool that was lost (e.g. main-process restart during dev).
+const lastDatabase = new Map<string, string>()
+
 export async function connect(connectionId: string, database?: string): Promise<void> {
   const cfg = getConnection(connectionId)
   if (!cfg) throw new Error(`Unknown connection: ${connectionId}`)
   await disconnect(connectionId)
+  const db = database ?? cfg.database
   const pool = new pg.Pool(
     poolConfig({
       host: cfg.host,
       port: cfg.port,
-      database: database ?? cfg.database,
+      database: db,
       user: cfg.user,
       ssl: cfg.ssl,
       password: getPassword(connectionId)
@@ -46,6 +51,15 @@ export async function connect(connectionId: string, database?: string): Promise<
   const client = await pool.connect()
   client.release()
   pools.set(connectionId, pool)
+  lastDatabase.set(connectionId, db)
+}
+
+/** Return the pool, transparently reconnecting if it was dropped. */
+export async function ensureConnected(connectionId: string): Promise<pg.Pool> {
+  if (!pools.has(connectionId)) {
+    await connect(connectionId, lastDatabase.get(connectionId))
+  }
+  return getPool(connectionId)
 }
 
 export async function disconnect(connectionId: string): Promise<void> {
