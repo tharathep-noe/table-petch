@@ -8,22 +8,22 @@ run SQL. Built with **Electron + React + TypeScript**.
 ## Requirements
 
 - Node.js 20+
-- npm 10+
+- Yarn 1.x (Classic) — this project uses yarn, not npm
 - A reachable PostgreSQL server to connect to
 
 ## Getting started
 
 ```bash
-npm install      # install dependencies
-npm run dev      # launch the app in development (hot reload)
+yarn install     # install dependencies
+yarn dev         # launch the app in development (hot reload)
 ```
 
 Other scripts:
 
 ```bash
-npm run typecheck   # type-check both the Node and web sides
-npm run build       # production build into out/
-npm run start       # preview the production build
+yarn typecheck   # type-check both the Node and web sides
+yarn build       # production build into out/
+yarn start       # preview the production build
 ```
 
 ## How the app is structured
