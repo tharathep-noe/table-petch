@@ -26,17 +26,44 @@ interface MenuState {
 const treeItem = "px-1.5 py-0.5 rounded cursor-pointer hover:bg-border";
 const schemaLabel = "text-muted mt-1.5 font-semibold";
 
+// A tab owns its own editor text and result data, so switching tabs preserves
+// both. Connection/schema stay global (shared across tabs).
+interface Tab {
+  id: string;
+  title: string;
+  sqlText: string;
+  showSql: boolean;
+  result: QueryResult | null;
+  currentTable: TableRef | null;
+  error: string | null;
+}
+
+function makeTab(): Tab {
+  return {
+    id: crypto.randomUUID(),
+    title: "Query",
+    sqlText: "select * from ",
+    showSql: false,
+    result: null,
+    currentTable: null,
+    error: null,
+  };
+}
+
 export function App(): JSX.Element {
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [schema, setSchema] = useState<SchemaInfo | null>(null);
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [currentTable, setCurrentTable] = useState<TableRef | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [showSql, setShowSql] = useState(false);
-  const [sqlText, setSqlText] = useState("select * from ");
+
+  const initialTab = useMemo(makeTab, []);
+  const [tabs, setTabs] = useState<Tab[]>([initialTab]);
+  const [activeTabId, setActiveTabId] = useState(initialTab.id);
+  const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  const updateTab = (id: string, patch: Partial<Tab>): void =>
+    setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   // Table/column names for SQL autocomplete.
   const sqlSchema = useMemo(() => {
@@ -69,31 +96,35 @@ export function App(): JSX.Element {
   }, [menu]);
 
   async function connect(id: string): Promise<void> {
-    setError(null);
     try {
       await window.api.connect(id);
       setActiveId(id);
       setSchema(await window.api.listSchema(id));
-      setResult(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      updateTab(activeTabId, { error: e instanceof Error ? e.message : String(e) });
     }
   }
 
-  async function loadTable(id: string, table: TableRef): Promise<void> {
-    setError(null);
+  async function loadTable(
+    tabId: string,
+    connId: string,
+    table: TableRef,
+  ): Promise<void> {
     try {
-      setResult(
-        await window.api.loadRows({
-          connectionId: id,
-          table,
-          limit: 500,
-          offset: 0,
-        }),
-      );
-      setCurrentTable(table);
+      const res = await window.api.loadRows({
+        connectionId: connId,
+        table,
+        limit: 500,
+        offset: 0,
+      });
+      updateTab(tabId, {
+        result: res,
+        currentTable: table,
+        error: null,
+        title: table.name,
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      updateTab(tabId, { error: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -101,25 +132,45 @@ export function App(): JSX.Element {
     if (!activeId) return;
     // Show the table's data, and mirror the equivalent SELECT into the editor.
     const ident = (s: string): string => `"${s.replace(/"/g, '""')}"`;
-    setSqlText(`select * from ${ident(table.schema)}.${ident(table.name)} limit 100`);
-    loadTable(activeId, table);
+    updateTab(activeTabId, {
+      sqlText: `select * from ${ident(table.schema)}.${ident(table.name)} limit 100`,
+    });
+    loadTable(activeTabId, activeId, table);
   }
 
   function reload(): void {
-    if (activeId && currentTable) loadTable(activeId, currentTable);
+    if (activeId && active.currentTable)
+      loadTable(active.id, activeId, active.currentTable);
   }
 
   async function switchDatabase(db: string): Promise<void> {
     if (!activeId) return;
-    setError(null);
     try {
       await window.api.switchDatabase(activeId, db);
       setSchema(await window.api.listSchema(activeId));
-      setResult(null);
-      setCurrentTable(null);
+      updateTab(activeTabId, { result: null, currentTable: null, error: null });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      updateTab(activeTabId, { error: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  function newTab(): void {
+    const t = makeTab();
+    setTabs((ts) => [...ts, t]);
+    setActiveTabId(t.id);
+  }
+
+  function closeTab(id: string): void {
+    const idx = tabs.findIndex((t) => t.id === id);
+    const next = tabs.filter((t) => t.id !== id);
+    if (next.length === 0) {
+      const fresh = makeTab();
+      setTabs([fresh]);
+      setActiveTabId(fresh.id);
+      return;
+    }
+    setTabs(next);
+    if (id === activeTabId) setActiveTabId(next[Math.max(0, idx - 1)].id);
   }
 
   async function handleSaved(
@@ -144,7 +195,6 @@ export function App(): JSX.Element {
       await window.api.disconnect(conn.id).catch(() => {});
       setActiveId(null);
       setSchema(null);
-      setResult(null);
     }
     await window.api.deleteConnection(conn.id);
     await refreshConnections();
@@ -215,39 +265,76 @@ export function App(): JSX.Element {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Tab bar — each tab keeps its own query text and result data. */}
+        <div className="app-drag flex items-end gap-1 px-2 pt-8 bg-panel border-b border-border overflow-x-auto">
+          {tabs.map((t) => (
+            <div
+              key={t.id}
+              className={`app-no-drag group flex items-center gap-2 px-3 py-1 rounded-t text-xs whitespace-nowrap cursor-pointer ${
+                t.id === activeTabId
+                  ? "bg-bg text-text"
+                  : "bg-panel text-muted hover:bg-border"
+              }`}
+              onClick={() => setActiveTabId(t.id)}
+            >
+              <span>{t.title || "Untitled"}</span>
+              <span
+                className="opacity-50 group-hover:opacity-100 hover:text-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(t.id);
+                }}
+                title="Close tab"
+              >
+                ×
+              </span>
+            </div>
+          ))}
+          <button
+            className="app-no-drag px-2 py-1 text-muted hover:text-text"
+            onClick={newTab}
+            title="New tab"
+          >
+            ＋
+          </button>
+        </div>
+
         <div className="app-drag flex gap-2 items-center p-2 border-b border-border">
           <button
             className="app-no-drag rounded border border-border px-2 py-0.5 text-xs cursor-pointer hover:bg-border disabled:opacity-40"
-            onClick={() => setShowSql((v) => !v)}
+            onClick={() => updateTab(active.id, { showSql: !active.showSql })}
             disabled={!activeId}
             title="Toggle SQL editor"
           >
-            {showSql ? "▾ SQL" : "▸ SQL"}
+            {active.showSql ? "▾ SQL" : "▸ SQL"}
           </button>
           <span className="text-muted">
             {activeId ? "Connected" : "Pick a connection"}
           </span>
-          {error && <span className="text-danger">{error}</span>}
+          {active.error && <span className="text-danger">{active.error}</span>}
         </div>
-        {showSql && activeId && (
+        {active.showSql && activeId && (
           <SqlEditor
             connectionId={activeId}
-            value={sqlText}
-            onChange={setSqlText}
+            value={active.sqlText}
+            onChange={(v) => updateTab(active.id, { sqlText: v })}
             schema={sqlSchema}
-            onResult={(r) => {
-              setResult(r);
-              setCurrentTable(null);
-              setError(null);
-            }}
-            onError={setError}
+            onResult={(r) =>
+              updateTab(active.id, { result: r, currentTable: null, error: null })
+            }
+            onError={(m) => updateTab(active.id, { error: m })}
           />
         )}
         <div className="flex-1 overflow-hidden">
-          {result && activeId ? (
-            <EditableGrid connectionId={activeId} result={result} onReload={reload} />
-          ) : error ? (
-            <div className="p-6 text-danger whitespace-pre-wrap">{error}</div>
+          {active.result && activeId ? (
+            <EditableGrid
+              key={active.id}
+              connectionId={activeId}
+              result={active.result}
+              onReload={reload}
+            />
+          ) : active.error ? (
+            <div className="p-6 text-danger whitespace-pre-wrap">{active.error}</div>
           ) : (
             <div className="text-muted p-6">Select a table or run a query.</div>
           )}
