@@ -1,0 +1,33 @@
+{
+  "name": "table-petch",
+  "version": "0.0.1",
+  "description": "A fast Postgres GUI client — view, edit, and query your data.",
+  "main": "out/main/index.js",
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@tanstack/react-table": "^8.20.6",
+    "@tanstack/react-virtual": "^3.11.2",
+    "@types/node": "^20.17.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-vite": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
