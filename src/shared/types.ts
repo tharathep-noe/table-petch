@@ -46,6 +46,9 @@ export interface QueryResult {
   /** True when results map to exactly one base table and are therefore editable. */
   editable: boolean
   table?: TableRef
+  /** Column-name sets that uniquely identify a row (PK + unique indexes).
+   *  Present for editable single-table results. */
+  uniqueKeys?: string[][]
 }
 
 export interface LoadRowsRequest {

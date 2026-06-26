@@ -62,6 +62,11 @@ data, plus a SQL editor.
 - Materialized views, functions, sequences, types, indexes in the tree
 - Rich per-type editors (date pickers, JSON tree editor, array chips)
 - Keyset pagination
+- **INSERT (new-row) UX** — blank row, default values, required-field validation
+  (the write engine in `commit.ts` already supports `InsertChange`)
+- **Grid virtualization** (`@tanstack/react-virtual`) — add when result sets
+  exceed the 500-row page cap; the grid is on TanStack Table already
+- **Sorting / column resize** in the grid
 
 ## Open (business layer — decide before launch, not before coding)
 1. Monetization / licensing (license-key validation, trial, payment provider)
@@ -70,9 +75,16 @@ data, plus a SQL editor.
 
 ## Suggested build order
 1. Project boots (Electron + React window). ✅ scaffolded
-2. Connection store + secure passwords (`safeStorage`).
-3. Connect/disconnect + schema introspection → sidebar.
-4. Table browser read path (paged `loadRows`).
-5. SQL editor + `runQuery`.
-6. Staged edit model + `commitChanges` (the write path).
-7. Type handling polish (NULL, expander modal).
+2. Connection store + secure passwords (`safeStorage`). ✅
+3. Connect/disconnect + schema introspection → sidebar. ✅
+4. Table browser read path (paged `loadRows`). ✅
+5. SQL editor + `runQuery`. ✅ (CodeMirror, runs selection-or-all via ⌘↵;
+   results shown read-only. Refinement TODO: run *statement under cursor*,
+   and make simple single-table SELECT results editable.)
+6. Staged edit model + `commitChanges` (UPDATE + DELETE). ✅
+   (INSERT deferred — see Deferred list.)
+7. Type handling polish (NULL ✅; expander modal still TODO).
+8. Database switcher in the sidebar. ✅
+
+Also done: Add/Edit/Delete connection modal, Tailwind, draggable window,
+unique-key introspection, optimistic-concurrency (fail-on-0-rows).

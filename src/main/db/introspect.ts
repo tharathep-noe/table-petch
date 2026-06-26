@@ -37,10 +37,17 @@ export async function listSchema(connectionId: string): Promise<SchemaInfo> {
   }
 }
 
+export interface TableColumns {
+  columns: ColumnMeta[]
+  /** Column-name sets that uniquely identify a row (primary key + unique
+   *  indexes). Used to build a precise WHERE for UPDATE/DELETE. */
+  uniqueKeys: string[][]
+}
+
 /** Columns + primary-key + unique-constraint info for one table. */
-export async function getColumns(connectionId: string, table: TableRef): Promise<ColumnMeta[]> {
+export async function getColumns(connectionId: string, table: TableRef): Promise<TableColumns> {
   const pool = getPool(connectionId)
-  const { rows } = await pool.query<{
+  const columnsP = pool.query<{
     name: string
     data_type: string
     nullable: boolean
@@ -66,6 +73,23 @@ export async function getColumns(connectionId: string, table: TableRef): Promise
     [table.schema, table.name]
   )
 
+  // Every unique index (primary key included), as ordered column-name sets.
+  const uniqueP = pool.query<{ cols: string[] }>(
+    `select array_agg(a.attname order by k.ord) as cols
+       from pg_index i
+       join pg_class c on c.oid = i.indrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       cross join lateral unnest(i.indkey) with ordinality as k(attnum, ord)
+       join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+      where i.indisunique and c.relname = $2 and n.nspname = $1
+        and i.indpred is null               -- skip partial indexes
+        and i.indexprs is null              -- skip expression indexes
+      group by i.indexrelid`,
+    [table.schema, table.name]
+  )
+
+  const [{ rows }, unique] = await Promise.all([columnsP, uniqueP])
+
   // De-dup: the join above can repeat rows when multiple pk columns exist.
   const seen = new Set<string>()
   const cols: ColumnMeta[] = []
@@ -79,5 +103,6 @@ export async function getColumns(connectionId: string, table: TableRef): Promise
       isPrimaryKey: r.is_pk
     })
   }
-  return cols
+
+  return { columns: cols, uniqueKeys: unique.rows.map((r) => r.cols) }
 }

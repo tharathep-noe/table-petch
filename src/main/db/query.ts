@@ -9,7 +9,7 @@ const qualified = (t: TableRef): string => `${ident(t.schema)}.${ident(t.name)}`
 /** Paged read of a single table — the table browser's read path. */
 export async function loadRows(req: LoadRowsRequest): Promise<QueryResult> {
   const pool = getPool(req.connectionId)
-  const cols = await getColumns(req.connectionId, req.table)
+  const { columns, uniqueKeys } = await getColumns(req.connectionId, req.table)
 
   const order = req.orderBy
     ? ` order by ${ident(req.orderBy.column)} ${req.orderBy.desc ? 'desc' : 'asc'}`
@@ -18,11 +18,12 @@ export async function loadRows(req: LoadRowsRequest): Promise<QueryResult> {
   const res = await pool.query({ text: sql, rowMode: 'array', values: [req.limit, req.offset] })
 
   return {
-    columns: cols,
+    columns,
     rows: res.rows as Array<Array<string | null>>,
     rowCount: res.rowCount ?? res.rows.length,
     editable: true,
-    table: req.table
+    table: req.table,
+    uniqueKeys
   }
 }
 

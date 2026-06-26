@@ -83,8 +83,18 @@ export async function commitChanges(
   let applied = 0
   try {
     await client.query('begin')
-    for (const stmt of prepareChanges(changes)) {
+    for (let i = 0; i < changes.length; i++) {
+      const change = changes[i]
+      const stmt = prepareChange(change)
       const res = await client.query(stmt.sql, stmt.params)
+      // Optimistic concurrency: an update/delete that hits nothing means the
+      // row changed or vanished underneath us — abort rather than silently no-op.
+      if (change.kind !== 'insert' && (res.rowCount ?? 0) === 0) {
+        throw new Error(
+          `A ${change.kind} on ${change.table.schema}.${change.table.name} matched no rows ` +
+            `— the row was modified or removed by someone else. Refresh and retry.`
+        )
+      }
       applied += res.rowCount ?? 0
     }
     await client.query('commit')

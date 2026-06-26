@@ -26,3 +26,13 @@
     color: var(--color-text);
   }
 }
+
+/* Window drag regions (frameless / hiddenInset title bar). Apply `app-drag`
+   to a strip to let the user move the window by it; mark interactive children
+   `app-no-drag` so they stay clickable. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
