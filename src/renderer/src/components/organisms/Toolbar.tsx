@@ -26,7 +26,7 @@ export function Toolbar({
         disabled={!connected}
         title="Toggle SQL editor"
       >
-        {showSql ? "▾ SQL" : "▸ SQL"}
+        {showSql ? "Close Sql Editor" : "Open Sql Editor"}
       </Button>
       <Button
         variant="ghost"
