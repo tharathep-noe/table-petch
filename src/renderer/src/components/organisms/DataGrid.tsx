@@ -98,6 +98,11 @@ export function DataGrid({
   } | null>(null);
   const anchorRef = useRef<number | null>(null);
   const tempIdRef = useRef(-1);
+  // Drag-to-select existing rows. pressRowRef is where the mouse went down;
+  // draggingRef flips true once the drag crosses into another row, and stays
+  // true through the trailing click so the click doesn't collapse the range.
+  const pressRowRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
   // Lets the global keydown listener call the latest commit() closure.
   const commitRef = useRef<() => void>(() => {});
 
@@ -129,6 +134,15 @@ export function DataGrid({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // End any in-progress row drag when the button is released anywhere.
+  useEffect(() => {
+    const onUp = (): void => {
+      pressRowRef.current = null;
+    };
+    window.addEventListener("mouseup", onUp);
+    return () => window.removeEventListener("mouseup", onUp);
   }, []);
 
   const counts = countChanges(result, edits, deleted, newRows);
@@ -208,6 +222,15 @@ export function DataGrid({
       next.add(rowIndex);
       anchorRef.current = rowIndex;
     }
+    setSelected(next);
+  }
+
+  /** Select the inclusive row range [a, b], anchored at a. Used by drag-select. */
+  function selectRange(a: number, b: number): void {
+    const [lo, hi] = [Math.min(a, b), Math.max(a, b)];
+    const next = new Set<number>();
+    for (let i = lo; i <= hi; i++) next.add(i);
+    anchorRef.current = a;
     setSelected(next);
   }
 
@@ -342,7 +365,7 @@ export function DataGrid({
   return (
     <div className="flex flex-col h-full">
       <div
-        className="flex-1 overflow-auto outline-none"
+        className="flex-1 overflow-auto outline-none select-none"
         tabIndex={0}
         onKeyDown={onKeyDown}
       >
@@ -383,14 +406,31 @@ export function DataGrid({
               return (
                 <tr
                   key={row.id}
-                  className={isDel ? "opacity-60" : ""}
-                  onClick={(e) => selectRow(ri, e)}
+                  className={`
+                    ${isDel ? "opacity-60" : ""}
+                    ${isSel ? "bg-accent/30" : "bg-panel"}`}
+                  onMouseDown={() => {
+                    pressRowRef.current = ri;
+                    draggingRef.current = false;
+                  }}
+                  onMouseEnter={(e) => {
+                    if (e.buttons === 1 && pressRowRef.current !== null) {
+                      draggingRef.current = true;
+                      selectRange(pressRowRef.current, ri);
+                    }
+                  }}
+                  onClick={(e) => {
+                    if (draggingRef.current) return;
+                    selectRow(ri, e);
+                  }}
                 >
                   <td
-                    className={`${cellCls} text-muted cursor-pointer select-none ${
-                      isSel ? "bg-accent/30" : "bg-panel"
-                    }`}
-                    onClick={(e) => selectRow(ri, e)}
+                    className={`${cellCls} text-muted cursor-pointer select-none`}
+                    onClick={(e) => {
+                      if (draggingRef.current) return;
+                      e.stopPropagation();
+                      selectRow(ri, e);
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       if (!selected.has(ri)) setSelected(new Set([ri]));
@@ -419,9 +459,10 @@ export function DataGrid({
                           ${cellCls} ${dirty ? "bg-accent/20" : ""} 
                           ${isFocused ? "ring-1 ring-accent ring-inset" : ""} 
                           ${isDel ? "line-through text-danger" : ""}`}
-                        onClick={() =>
-                          editable && setFocused({ row: ri, col: colName })
-                        }
+                        onClick={() => {
+                          if (draggingRef.current) return;
+                          if (editable) setFocused({ row: ri, col: colName });
+                        }}
                         onDoubleClick={() =>
                           startEdit({ row: ri, col: colName })
                         }
