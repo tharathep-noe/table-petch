@@ -1,0 +1,11 @@
+appId: com.tharathep.table-petch
+productName: Table Petch
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
