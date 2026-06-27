@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ConnectionConfig,
+  PersistedSession,
   QueryResult,
   SchemaInfo,
   TableRef,
@@ -64,6 +65,11 @@ export function App(): JSX.Element {
   const [activeTabId, setActiveTabId] = useState(initialTab.id);
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
+  // Session restore runs once on launch; saving is gated until it completes so
+  // the default blank tab never overwrites a saved session.
+  const [hydrated, setHydrated] = useState(false);
+  const restoreStarted = useRef(false);
+
   const updateTab = (id: string, patch: Partial<Tab>): void =>
     setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
@@ -101,6 +107,71 @@ export function App(): JSX.Element {
   useEffect(() => {
     refreshConnections();
   }, []);
+
+  // Restore the last session on launch (ADR 0002): rebuild tabs, best-effort
+  // auto-reconnect, then auto-load table tabs only — never auto-run SQL tabs.
+  useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
+    void (async () => {
+      try {
+        const saved = await window.api.loadSession();
+        if (!saved || saved.tabs.length === 0) return;
+
+        const restored: Tab[] = saved.tabs.map((t) => ({
+          id: t.id,
+          title: t.title,
+          sqlText: t.sqlText,
+          showSql: t.showSql,
+          currentTable: t.currentTable,
+          result: null,
+          error: null,
+        }));
+        setTabs(restored);
+        const focus =
+          restored.find((t) => t.id === saved.activeTabId) ?? restored[0];
+        setActiveTabId(focus.id);
+
+        const connId = saved.activeConnectionId;
+        if (!connId) return;
+        try {
+          await window.api.connect(connId);
+          setActiveId(connId);
+          setSchema(await window.api.listSchema(connId));
+        } catch {
+          return; // tabs are restored; leave the workspace disconnected
+        }
+        // Re-derive only the read-only table browses; SQL tabs keep their text.
+        for (const t of restored) {
+          if (t.currentTable) void loadTable(t.id, connId, t.currentTable);
+        }
+      } finally {
+        setHydrated(true);
+      }
+    })();
+  }, []);
+
+  // Debounced save of the session-relevant slice. Strips result/error and waits
+  // for hydration so we never persist (or clobber with) the default blank tab.
+  useEffect(() => {
+    if (!hydrated) return;
+    const handle = setTimeout(() => {
+      const payload: PersistedSession = {
+        version: 1,
+        activeConnectionId: activeId,
+        activeTabId,
+        tabs: tabs.map((t) => ({
+          id: t.id,
+          title: t.title,
+          sqlText: t.sqlText,
+          showSql: t.showSql,
+          currentTable: t.currentTable,
+        })),
+      };
+      void window.api.saveSession(payload);
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [hydrated, tabs, activeTabId, activeId]);
 
   // Block the browser's "select all" (Cmd/Ctrl+A) from highlighting the whole
   // window chrome. Still allowed inside real text editors (inputs, textareas,

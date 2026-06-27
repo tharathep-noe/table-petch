@@ -4,6 +4,7 @@ import type {
   Change,
   ConnectionInput,
   LoadRowsRequest,
+  PersistedSession,
   TablePetchApi,
 } from '@shared/types';
 
@@ -30,6 +31,10 @@ const api: TablePetchApi = {
     ipcRenderer.invoke(CH.prepareChanges, id, changes),
   commitChanges: (id: string, changes: Change[]) =>
     ipcRenderer.invoke(CH.commitChanges, id, changes),
+
+  loadSession: () => ipcRenderer.invoke(CH.loadSession),
+  saveSession: (session: PersistedSession) =>
+    ipcRenderer.invoke(CH.saveSession, session),
 };
 
 contextBridge.exposeInMainWorld('api', api);

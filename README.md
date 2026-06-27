@@ -75,6 +75,7 @@ table-petch/
     │   ├── index.ts         #    app entry: creates the window, registers IPC
     │   ├── ipc.ts           #    maps IPC channels -> handler functions
     │   ├── store.ts         #    connection configs + passwords (OS keychain)
+    │   ├── sessionStore.ts  #    open tabs + active connection (session.json)
     │   └── db/              #    the database layer (uses the `pg` driver)
     │       ├── manager.ts   #    connection pools, connect/disconnect, test
     │       ├── introspect.ts#    read schema: databases, schemas, tables, columns

@@ -82,7 +82,33 @@ data, plus a SQL editor.
 
 1. Monetization / licensing (license-key validation, trial, payment provider)
 2. Packaging: code signing + notarization (macOS) / signing (Windows); auto-update
-3. App-state persistence: saved queries, query history, open tabs across restarts
+3. App-state persistence — split into three distinct concerns (see glossary):
+   - **Session** (open tabs + active tab + active connection across restarts) —
+     scoped in now; see [ADR 0002](./docs/adr/0002-session-persistence.md) and the
+     build steps below.
+   - **Saved queries** (curated, named SQL library) — deferred.
+   - **Query history** (automatic, append-only run log) — deferred.
+
+## Session persistence — build steps (current pass)
+
+Persist only reconstruction inputs; never the fetched `result`. Storage mirrors
+`store.ts` (main-process `session.json` in `userData`, reached via IPC). Restore
+auto-loads table tabs but never auto-runs SQL-editor tabs. See ADR 0002.
+
+1. **Shared contract** — add `PersistedSession` / `PersistedTab` types and
+   `loadSession()` / `saveSession(session)` to `TablePetchApi` in
+   `src/shared/types.ts`; add channel names in `src/shared/channels.ts`.
+2. **Main store** — `src/main/sessionStore.ts`: read/write `session.json` with the
+   `store.ts` error-swallowing pattern; `load` fails safe to "no session" on
+   missing/unparseable/unknown-`version`. Register handlers in `src/main/ipc.ts`.
+3. **Preload** — expose `loadSession` / `saveSession` on `window.api`.
+4. **Renderer save** — in `App.tsx`, a debounced (~500 ms) effect watching
+   `tabs` / `activeTabId` / `activeConnectionId` calls `saveSession`, stripping
+   `result` and `error` from each tab.
+5. **Renderer restore** — on mount, `loadSession()`; rebuild tabs (text + pane +
+   `currentTable`), then best-effort auto-reconnect to `activeConnectionId`. On
+   connect success, auto-load `currentTable` tabs; leave SQL-editor tabs un-run.
+   A dropped table surfaces a per-tab error without aborting the restore.
 
 ## Suggested build order
 

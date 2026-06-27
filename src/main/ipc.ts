@@ -1,7 +1,13 @@
 import { ipcMain } from 'electron';
 import { CH } from '@shared/channels';
-import type { Change, ConnectionInput, LoadRowsRequest } from '@shared/types';
+import type {
+  Change,
+  ConnectionInput,
+  LoadRowsRequest,
+  PersistedSession,
+} from '@shared/types';
 import * as store from './store';
+import * as session from './sessionStore';
 import * as mgr from './db/manager';
 import { listSchema } from './db/introspect';
 import { loadRows, runQuery } from './db/query';
@@ -37,5 +43,10 @@ export function registerIpc(): void {
   );
   ipcMain.handle(CH.commitChanges, (_e, id: string, changes: Change[]) =>
     commitChanges(id, changes),
+  );
+
+  ipcMain.handle(CH.loadSession, () => session.loadSession());
+  ipcMain.handle(CH.saveSession, (_e, s: PersistedSession) =>
+    session.saveSession(s),
   );
 }

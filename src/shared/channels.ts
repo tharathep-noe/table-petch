@@ -12,6 +12,8 @@ export const CH = {
   runQuery: 'db:runQuery',
   prepareChanges: 'db:prepare',
   commitChanges: 'db:commit',
+  loadSession: 'session:load',
+  saveSession: 'session:save',
 } as const;
 
 export type Channel = (typeof CH)[keyof typeof CH];

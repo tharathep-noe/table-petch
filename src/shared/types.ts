@@ -108,6 +108,26 @@ export interface CommitResult {
   error?: string;
 }
 
+// ---- Session (restored on launch) ----
+
+/** One tab's reconstruction inputs — never its fetched result/error. */
+export interface PersistedTab {
+  id: string;
+  title: string;
+  sqlText: string;
+  showSql: boolean;
+  currentTable: TableRef | null;
+}
+
+/** The restorable workspace. Stored as session.json in userData via IPC. */
+export interface PersistedSession {
+  /** Bumped (with a migration) whenever the shape changes; unknown → discarded. */
+  version: 1;
+  activeConnectionId: string | null;
+  activeTabId: string;
+  tabs: PersistedTab[];
+}
+
 // ---- The RPC surface exposed on window.api ----
 
 export interface TablePetchApi {
@@ -131,4 +151,7 @@ export interface TablePetchApi {
     changes: Change[],
   ): Promise<PreparedStatement[]>;
   commitChanges(connectionId: string, changes: Change[]): Promise<CommitResult>;
+
+  loadSession(): Promise<PersistedSession | null>;
+  saveSession(session: PersistedSession): Promise<void>;
 }

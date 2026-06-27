@@ -50,3 +50,33 @@ How a row is located for UPDATE/DELETE: primary key → a fully-non-null unique 
 → all columns. When only all-columns is possible, the commit shows a non-blocking
 warning. New rows have no row identity (nothing to locate yet).
 _Avoid_: row key (ambiguous with primary key)
+
+### App state (what survives a restart)
+
+Three distinct concerns, never conflated. None of them stores fetched row data —
+they store only the inputs needed to reconstruct a view.
+
+**Session**:
+The restorable workspace: the open [[tab]]s, which one is active, and the active
+connection. Overwritten continuously; only the most recent state matters. Restored
+on launch. Persisted as `session.json` in `userData` and reached only through IPC
+(never the renderer's own storage), the same pattern as connections.
+_Avoid_: workspace state, layout, last state
+
+**Tab**:
+One editor+result surface in the session. Persists its inputs (SQL text, the
+browsed table, whether the SQL pane is shown) — never its fetched `result`, which
+is re-derived by re-running the SQL or re-loading the table.
+_Avoid_: page, view, window
+
+**Saved query**:
+A user-named SQL snippet kept deliberately in a curated library. Frozen text;
+lives until the user deletes it. Distinct from a tab (live, disposable) and from
+history (automatic).
+_Avoid_: snippet, bookmark, favorite
+
+**Query history**:
+An automatic, append-only log of statements that were executed, capped and
+rotated. Privacy-sensitive (may contain literal values). Distinct from saved
+queries, which are explicit and curated.
+_Avoid_: log, recents, audit
