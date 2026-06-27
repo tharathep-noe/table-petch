@@ -1,18 +1,20 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { CH } from '@shared/channels'
+import { contextBridge, ipcRenderer } from 'electron';
+import { CH } from '@shared/channels';
 import type {
   Change,
   ConnectionInput,
   LoadRowsRequest,
-  TablePetchApi
-} from '@shared/types'
+  TablePetchApi,
+} from '@shared/types';
 
 // The only surface the sandboxed renderer can touch. Mirrors TablePetchApi.
 const api: TablePetchApi = {
   listConnections: () => ipcRenderer.invoke(CH.listConnections),
-  saveConnection: (input: ConnectionInput) => ipcRenderer.invoke(CH.saveConnection, input),
+  saveConnection: (input: ConnectionInput) =>
+    ipcRenderer.invoke(CH.saveConnection, input),
   deleteConnection: (id: string) => ipcRenderer.invoke(CH.deleteConnection, id),
-  testConnection: (input: ConnectionInput) => ipcRenderer.invoke(CH.testConnection, input),
+  testConnection: (input: ConnectionInput) =>
+    ipcRenderer.invoke(CH.testConnection, input),
 
   connect: (id: string) => ipcRenderer.invoke(CH.connect, id),
   disconnect: (id: string) => ipcRenderer.invoke(CH.disconnect, id),
@@ -21,12 +23,13 @@ const api: TablePetchApi = {
 
   listSchema: (id: string) => ipcRenderer.invoke(CH.listSchema, id),
   loadRows: (req: LoadRowsRequest) => ipcRenderer.invoke(CH.loadRows, req),
-  runQuery: (id: string, sql: string) => ipcRenderer.invoke(CH.runQuery, id, sql),
+  runQuery: (id: string, sql: string) =>
+    ipcRenderer.invoke(CH.runQuery, id, sql),
 
   prepareChanges: (id: string, changes: Change[]) =>
     ipcRenderer.invoke(CH.prepareChanges, id, changes),
   commitChanges: (id: string, changes: Change[]) =>
-    ipcRenderer.invoke(CH.commitChanges, id, changes)
-}
+    ipcRenderer.invoke(CH.commitChanges, id, changes),
+};
 
-contextBridge.exposeInMainWorld('api', api)
+contextBridge.exposeInMainWorld('api', api);

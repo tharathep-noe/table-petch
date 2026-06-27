@@ -4,7 +4,7 @@ import type {
   ColumnMeta,
   QueryResult,
   RowKey,
-} from "@shared/types";
+} from '@shared/types';
 
 // Staged edits for one loaded page. Rows are keyed by their index in the page.
 export type Edits = Record<number, Record<string, CellValue>>;
@@ -33,7 +33,9 @@ export function setNewRowCell(
   value: CellValue,
 ): NewRow[] {
   return rows.map((r) =>
-    r.tempId === tempId ? { ...r, values: { ...r.values, [colName]: value } } : r,
+    r.tempId === tempId
+      ? { ...r, values: { ...r.values, [colName]: value } }
+      : r,
   );
 }
 
@@ -76,9 +78,11 @@ export function invalidNewRows(
  *  send a parsed string[] or a raw Postgres array literal like "{id}". */
 function toColumnNames(entry: unknown): string[] {
   if (Array.isArray(entry)) return entry as string[];
-  if (typeof entry !== "string") return [];
-  const inner = entry.replace(/^\{/, "").replace(/\}$/, "");
-  return inner === "" ? [] : inner.split(",").map((s) => s.replace(/^"|"$/g, ""));
+  if (typeof entry !== 'string') return [];
+  const inner = entry.replace(/^\{/, '').replace(/\}$/, '');
+  return inner === ''
+    ? []
+    : inner.split(',').map((s) => s.replace(/^"|"$/g, ''));
 }
 
 /** Resolve the displayed value of a cell: staged edit if any, else original. */
@@ -129,22 +133,22 @@ export function buildRowKey(
   const indexOf = new Map(columns.map((c, i) => [c.name, i]));
   const valueOf = (name: string): CellValue =>
     row[indexOf.get(name) ?? -1] ?? null;
-  const keyFrom = (names: string[], identity: RowKey["identity"]): RowKey => ({
+  const keyFrom = (names: string[], identity: RowKey['identity']): RowKey => ({
     where: Object.fromEntries(names.map((n) => [n, valueOf(n)])),
     identity,
   });
 
   const pk = columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
-  if (pk.length > 0) return keyFrom(pk, "primaryKey");
+  if (pk.length > 0) return keyFrom(pk, 'primaryKey');
 
   const usable = uniqueKeys
     .map(toColumnNames)
     .find((cols) => cols.length > 0 && cols.every((n) => valueOf(n) !== null));
-  if (usable) return keyFrom(usable, "unique");
+  if (usable) return keyFrom(usable, 'unique');
 
   return keyFrom(
     columns.map((c) => c.name),
-    "allColumns",
+    'allColumns',
   );
 }
 
@@ -167,7 +171,7 @@ export function buildChanges(
     if (deleted.has(rowIndex)) continue; // deletion supersedes an edit
     if (Object.keys(set).length === 0) continue;
     changes.push({
-      kind: "update",
+      kind: 'update',
       table,
       key: buildRowKey(result.rows[rowIndex], result.columns, uniqueKeys),
       set,
@@ -176,14 +180,14 @@ export function buildChanges(
 
   for (const rowIndex of deleted) {
     changes.push({
-      kind: "delete",
+      kind: 'delete',
       table,
       key: buildRowKey(result.rows[rowIndex], result.columns, uniqueKeys),
     });
   }
 
   for (const row of newRows) {
-    changes.push({ kind: "insert", table, values: row.values });
+    changes.push({ kind: 'insert', table, values: row.values });
   }
 
   return changes;

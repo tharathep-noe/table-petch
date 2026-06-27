@@ -11,7 +11,7 @@ export interface ConnectionConfig {
   /** Password is never stored here in plaintext; it lives in safeStorage. */
 }
 
-export interface ConnectionInput extends Omit<ConnectionConfig, "id"> {
+export interface ConnectionInput extends Omit<ConnectionConfig, 'id'> {
   id?: string;
   password?: string;
 }
@@ -30,7 +30,7 @@ export interface ColumnMeta {
 export interface TableRef {
   schema: string;
   name: string;
-  kind: "table" | "view";
+  kind: 'table' | 'view';
 }
 
 export interface SchemaInfo {
@@ -71,24 +71,24 @@ export interface RowKey {
   /** Original values for the columns used to locate the row (PK/unique/all). */
   where: Record<string, CellValue>;
   /** How the WHERE was derived — drives the commit-time warning. */
-  identity: "primaryKey" | "unique" | "allColumns";
+  identity: 'primaryKey' | 'unique' | 'allColumns';
 }
 
 export interface UpdateChange {
-  kind: "update";
+  kind: 'update';
   table: TableRef;
   key: RowKey;
   set: Record<string, CellValue>;
 }
 
 export interface InsertChange {
-  kind: "insert";
+  kind: 'insert';
   table: TableRef;
   values: Record<string, CellValue>;
 }
 
 export interface DeleteChange {
-  kind: "delete";
+  kind: 'delete';
   table: TableRef;
   key: RowKey;
 }

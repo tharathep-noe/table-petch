@@ -23,7 +23,7 @@ export function Menu({
         <div
           key={i}
           className={`px-2.5 py-1.5 rounded cursor-pointer hover:bg-border ${
-            item.danger ? "text-danger" : ""
+            item.danger ? 'text-danger' : ''
           }`}
           onClick={item.onClick}
         >

@@ -1,5 +1,5 @@
-import { getPool } from "./manager";
-import type { ColumnMeta, SchemaInfo, TableRef } from "@shared/types";
+import { getPool } from './manager';
+import type { ColumnMeta, SchemaInfo, TableRef } from '@shared/types';
 
 // Introspection queries against the Postgres catalog. Kept read-only.
 
@@ -31,7 +31,7 @@ export async function listSchema(connectionId: string): Promise<SchemaInfo> {
     list.push({
       schema: r.schema,
       name: r.name,
-      kind: r.kind as TableRef["kind"],
+      kind: r.kind as TableRef['kind'],
     });
     bySchema.set(r.schema, list);
   }
@@ -57,33 +57,33 @@ export interface TableColumns {
 // text), which means catalog booleans arrive as "t"/"f" and array_agg() arrives
 // as a "{a,b}" string. These helpers turn them back into real JS types.
 function toBool(v: unknown): boolean {
-  return v === true || v === "t" || v === "true";
+  return v === true || v === 't' || v === 'true';
 }
 
 /** Parse a Postgres array literal like {id} or {"a,b",c} into a string[]. */
 function parsePgArray(v: unknown): string[] {
   if (Array.isArray(v)) return v as string[];
-  if (typeof v !== "string") return [];
-  const inner = v.replace(/^\{/, "").replace(/\}$/, "");
-  if (inner === "") return [];
+  if (typeof v !== 'string') return [];
+  const inner = v.replace(/^\{/, '').replace(/\}$/, '');
+  if (inner === '') return [];
   const out: string[] = [];
   let i = 0;
   while (i < inner.length) {
     if (inner[i] === '"') {
       i++;
-      let s = "";
+      let s = '';
       while (i < inner.length && inner[i] !== '"') {
-        if (inner[i] === "\\") i++;
+        if (inner[i] === '\\') i++;
         s += inner[i++];
       }
       i++; // closing quote
       out.push(s);
     } else {
-      let s = "";
-      while (i < inner.length && inner[i] !== ",") s += inner[i++];
+      let s = '';
+      while (i < inner.length && inner[i] !== ',') s += inner[i++];
       out.push(s);
     }
-    if (inner[i] === ",") i++;
+    if (inner[i] === ',') i++;
   }
   return out;
 }
@@ -155,5 +155,8 @@ export async function getColumns(
     });
   }
 
-  return { columns: cols, uniqueKeys: unique.rows.map((r) => parsePgArray(r.cols)) };
+  return {
+    columns: cols,
+    uniqueKeys: unique.rows.map((r) => parsePgArray(r.cols)),
+  };
 }

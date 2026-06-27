@@ -21,15 +21,15 @@ rows carry a renderer-local `tempId`, never a database key.
 _Avoid_: blank row, draft row, added row
 
 **Cell state** (new rows only):
-Each new-row cell is in exactly one of three states. *Unset* means the column is
-omitted from the `INSERT` so Postgres applies its DEFAULT/identity. *Value* is an
-explicit text value. *NULL* is an explicit null (only valid on a nullable column).
+Each new-row cell is in exactly one of three states. _Unset_ means the column is
+omitted from the `INSERT` so Postgres applies its DEFAULT/identity. _Value_ is an
+explicit text value. _NULL_ is an explicit null (only valid on a nullable column).
 Unset and NULL are different things and are shown differently in the grid.
 _Avoid_: empty, blank (these blur the unset/NULL distinction)
 
 **Unset**:
 The default state of a new-row cell: the column is left out of the `INSERT`
-entirely. Rendered as a muted `DEFAULT`. The opposite of being *set* (an explicit
+entirely. Rendered as a muted `DEFAULT`. The opposite of being _set_ (an explicit
 value or explicit NULL).
 _Avoid_: default value, empty
 

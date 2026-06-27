@@ -24,19 +24,30 @@ Other scripts:
 yarn typecheck   # type-check both the Node and web sides
 yarn build       # production build into out/
 yarn start       # preview the production build
+yarn format      # check formatting (CI-friendly, no writes)
+yarn format:fix  # format the entire project with Prettier
 ```
+
+### Code formatting
+
+The whole project is formatted with **Prettier**; the config lives in
+`.prettierrc.json` and is the single source of truth. The repo ships VS Code
+settings (`.vscode/settings.json`) that **format on save** using the Prettier
+extension (recommended in `.vscode/extensions.json`), so every developer writes
+the same style automatically. Run `yarn format:fix` before committing if your
+editor isn't set up.
 
 ## How the app is structured
 
 This is an Electron app, so there are **three runtime contexts**, and the code is
 split to match them. Understanding this split is the key to navigating the repo.
 
-| Context        | Runs in        | Has Node access? | Folder            |
-| -------------- | -------------- | ---------------- | ----------------- |
-| **Main**       | Node process   | Yes              | `src/main/`       |
-| **Preload**    | Bridge         | Limited          | `src/preload/`    |
-| **Renderer**   | Chromium (UI)  | No (sandboxed)   | `src/renderer/`   |
-| **Shared**     | imported by all | n/a             | `src/shared/`     |
+| Context      | Runs in         | Has Node access? | Folder          |
+| ------------ | --------------- | ---------------- | --------------- |
+| **Main**     | Node process    | Yes              | `src/main/`     |
+| **Preload**  | Bridge          | Limited          | `src/preload/`  |
+| **Renderer** | Chromium (UI)   | No (sandboxed)   | `src/renderer/` |
+| **Shared**   | imported by all | n/a              | `src/shared/`   |
 
 The renderer (the UI) is **sandboxed** and cannot touch the database or the
 filesystem directly. It talks to the main process over a typed IPC bridge. All

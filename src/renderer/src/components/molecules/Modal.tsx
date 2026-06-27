@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
 /** Centered overlay dialog. Click outside (the backdrop) closes it. */
 export function Modal({

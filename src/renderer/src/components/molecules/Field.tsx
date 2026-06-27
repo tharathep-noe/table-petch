@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
 /** A labelled form row: a caption above its control. */
 export function Field({
   label,
-  className = "",
+  className = '',
   children,
 }: {
   label: string;

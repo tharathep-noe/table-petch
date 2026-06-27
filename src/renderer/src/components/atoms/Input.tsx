@@ -1,8 +1,8 @@
-import type { InputHTMLAttributes } from "react";
+import type { InputHTMLAttributes } from 'react';
 
 /** Styled text input primitive. */
 export function Input({
-  className = "",
+  className = '',
   ...rest
 }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
   return (

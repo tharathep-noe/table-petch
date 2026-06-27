@@ -1,4 +1,4 @@
-import { Tab } from "../molecules/Tab";
+import { Tab } from '../molecules/Tab';
 
 export interface TabInfo {
   id: string;

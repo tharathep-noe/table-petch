@@ -11,7 +11,7 @@ export const CH = {
   loadRows: 'db:loadRows',
   runQuery: 'db:runQuery',
   prepareChanges: 'db:prepare',
-  commitChanges: 'db:commit'
-} as const
+  commitChanges: 'db:commit',
+} as const;
 
-export type Channel = (typeof CH)[keyof typeof CH]
+export type Channel = (typeof CH)[keyof typeof CH];

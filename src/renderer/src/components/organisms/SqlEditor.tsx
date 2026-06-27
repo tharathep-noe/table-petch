@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
-import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
-import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { keymap, EditorView } from "@codemirror/view";
-import { Prec } from "@codemirror/state";
-import type { QueryResult } from "@shared/types";
-import { Button } from "../atoms/Button";
+import { useRef, useState } from 'react';
+import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import { sql, PostgreSQL } from '@codemirror/lang-sql';
+import { keymap, EditorView } from '@codemirror/view';
+import { Prec } from '@codemirror/state';
+import type { QueryResult } from '@shared/types';
+import { Button } from '../atoms/Button';
 
 interface Props {
   connectionId: string;
@@ -57,8 +57,16 @@ export function SqlEditor({
     // Highest precedence so Cmd/Ctrl+Enter always runs, beating default keymaps.
     Prec.highest(
       keymap.of([
-        { key: "Mod-Enter", preventDefault: true, run: () => (runRef.current(), true) },
-        { key: "Shift-Mod-Enter", preventDefault: true, run: () => (runRef.current(), true) },
+        {
+          key: 'Mod-Enter',
+          preventDefault: true,
+          run: () => (runRef.current(), true),
+        },
+        {
+          key: 'Shift-Mod-Enter',
+          preventDefault: true,
+          run: () => (runRef.current(), true),
+        },
       ]),
     ),
     EditorView.lineWrapping,
@@ -83,7 +91,7 @@ export function SqlEditor({
           className="px-3 py-1"
           title="Run (Cmd/Ctrl+Enter) — runs the selection, or the whole editor"
         >
-          {running ? "Running…" : "▶ Run"}
+          {running ? 'Running…' : '▶ Run'}
         </Button>
         <span className="text-muted text-xs">⌘↵ runs selection or all</span>
       </div>

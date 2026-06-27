@@ -1,8 +1,8 @@
 # New-row cells are three-state: unset, value, or NULL
 
-When composing a new row, a cell can be *unset* (omitted from the `INSERT` so
-Postgres applies the column's DEFAULT/identity), an explicit *value*, or an
-explicit *NULL*. We deliberately keep "unset" distinct from "NULL" rather than
+When composing a new row, a cell can be _unset_ (omitted from the `INSERT` so
+Postgres applies the column's DEFAULT/identity), an explicit _value_, or an
+explicit _NULL_. We deliberately keep "unset" distinct from "NULL" rather than
 collapsing blank cells to NULL, because the two produce different rows: omitting
 a column lets serial/identity/`DEFAULT now()` columns work, while sending NULL
 overrides the default (and fails on NOT NULL columns).

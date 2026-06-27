@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 import type {
   ConnectionConfig,
   QueryResult,
   SchemaInfo,
   TableRef,
-} from "@shared/types";
-import { AppLayout } from "../components/templates/AppLayout";
-import { Sidebar } from "../components/organisms/Sidebar";
-import { TabBar } from "../components/organisms/TabBar";
-import { Toolbar } from "../components/organisms/Toolbar";
-import { SqlEditor } from "../components/organisms/SqlEditor";
-import { DataGrid } from "../components/organisms/DataGrid";
-import { ConnectionModal } from "../components/organisms/ConnectionModal";
-import { Menu } from "../components/molecules/Menu";
-import { Input } from "../components/atoms/Input";
+} from '@shared/types';
+import { AppLayout } from '../components/templates/AppLayout';
+import { Sidebar } from '../components/organisms/Sidebar';
+import { TabBar } from '../components/organisms/TabBar';
+import { Toolbar } from '../components/organisms/Toolbar';
+import { SqlEditor } from '../components/organisms/SqlEditor';
+import { DataGrid } from '../components/organisms/DataGrid';
+import { ConnectionModal } from '../components/organisms/ConnectionModal';
+import { Menu } from '../components/molecules/Menu';
+import { Input } from '../components/atoms/Input';
 
 interface ModalState {
   open: boolean;
@@ -41,8 +41,8 @@ interface Tab {
 function makeTab(): Tab {
   return {
     id: crypto.randomUUID(),
-    title: "Query",
-    sqlText: "select * from ",
+    title: 'Query',
+    sqlText: 'select * from ',
     showSql: false,
     result: null,
     currentTable: null,
@@ -57,7 +57,7 @@ export function App(): JSX.Element {
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [menu, setMenu] = useState<ConnMenuState | null>(null);
   const [filterShown, setFilterShown] = useState(false);
-  const [filterText, setFilterText] = useState("");
+  const [filterText, setFilterText] = useState('');
 
   const initialTab = useMemo(makeTab, []);
   const [tabs, setTabs] = useState<Tab[]>([initialTab]);
@@ -81,7 +81,8 @@ export function App(): JSX.Element {
 
   // Client-side row filter over the active tab's result.
   const visibleResult = useMemo(() => {
-    if (!active.result || !filterShown || !filterText.trim()) return active.result;
+    if (!active.result || !filterShown || !filterText.trim())
+      return active.result;
     const q = filterText.toLowerCase();
     return {
       ...active.result,
@@ -105,8 +106,8 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (!menu) return;
     const close = (): void => setMenu(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
   }, [menu]);
 
   async function connect(id: string): Promise<void> {
@@ -115,7 +116,9 @@ export function App(): JSX.Element {
       setActiveId(id);
       setSchema(await window.api.listSchema(id));
     } catch (e) {
-      updateTab(activeTabId, { error: e instanceof Error ? e.message : String(e) });
+      updateTab(activeTabId, {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -164,7 +167,9 @@ export function App(): JSX.Element {
       setSchema(await window.api.listSchema(activeId));
       updateTab(activeTabId, { result: null, currentTable: null, error: null });
     } catch (e) {
-      updateTab(activeTabId, { error: e instanceof Error ? e.message : String(e) });
+      updateTab(activeTabId, {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -282,7 +287,9 @@ export function App(): JSX.Element {
             onReload={reload}
           />
         ) : active.error ? (
-          <div className="p-6 text-danger whitespace-pre-wrap">{active.error}</div>
+          <div className="p-6 text-danger whitespace-pre-wrap">
+            {active.error}
+          </div>
         ) : (
           <div className="text-muted p-6">Select a table or run a query.</div>
         )}
@@ -294,14 +301,14 @@ export function App(): JSX.Element {
           y={menu.y}
           items={[
             {
-              label: "Edit…",
+              label: 'Edit…',
               onClick: () => {
                 setMenu(null);
                 setModal({ open: true, editing: menu.conn });
               },
             },
             {
-              label: "Delete",
+              label: 'Delete',
               danger: true,
               onClick: () => deleteConnection(menu.conn),
             },

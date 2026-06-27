@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
 /** The two-pane shell: fixed sidebar on the left, flexible main area. */
 export function AppLayout({

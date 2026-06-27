@@ -1,10 +1,10 @@
-import type { ConnectionConfig, SchemaInfo, TableRef } from "@shared/types";
-import { Button } from "../atoms/Button";
-import { Select } from "../atoms/Select";
-import logo from "../../assets/main-logo.png";
+import type { ConnectionConfig, SchemaInfo, TableRef } from '@shared/types';
+import { Button } from '../atoms/Button';
+import { Select } from '../atoms/Select';
+import logo from '../../assets/main-logo.png';
 
 const sectionLabel =
-  "text-[11px] font-semibold uppercase tracking-wider text-muted";
+  'text-[11px] font-semibold uppercase tracking-wider text-muted';
 
 interface Props {
   connections: ConnectionConfig[];
@@ -46,7 +46,9 @@ export function Sidebar({
         </div>
 
         {connections.length === 0 && (
-          <div className="text-muted text-xs px-2 py-3">No connections yet.</div>
+          <div className="text-muted text-xs px-2 py-3">
+            No connections yet.
+          </div>
         )}
         <div className="flex flex-col gap-0.5">
           {connections.map((c) => {
@@ -55,7 +57,9 @@ export function Sidebar({
               <div
                 key={c.id}
                 className={`group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
-                  isActive ? "bg-accent/15 text-text" : "text-text hover:bg-border/60"
+                  isActive
+                    ? 'bg-accent/15 text-text'
+                    : 'text-text hover:bg-border/60'
                 }`}
                 onClick={() => onConnect(c.id)}
                 onContextMenu={(e) => onConnectionMenu(e, c)}
@@ -63,7 +67,7 @@ export function Sidebar({
               >
                 <span
                   className={`h-2 w-2 shrink-0 rounded-full transition-colors ${
-                    isActive ? "bg-success" : "bg-muted/50 group-hover:bg-muted"
+                    isActive ? 'bg-success' : 'bg-muted/50 group-hover:bg-muted'
                   }`}
                 />
                 <span className="truncate text-sm">
@@ -103,16 +107,16 @@ export function Sidebar({
                         key={`${t.schema}.${t.name}`}
                         className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer text-sm transition-colors ${
                           isOpen
-                            ? "bg-accent/15 text-text font-medium"
-                            : "text-text/90 hover:bg-border/60"
+                            ? 'bg-accent/15 text-text font-medium'
+                            : 'text-text/90 hover:bg-border/60'
                         }`}
                         onClick={() => onOpenTable(t)}
                         title={`${t.schema}.${t.name}`}
                       >
                         <span
-                          className={`shrink-0 ${t.kind === "view" ? "text-muted" : "text-accent"}`}
+                          className={`shrink-0 ${t.kind === 'view' ? 'text-muted' : 'text-accent'}`}
                         >
-                          {t.kind === "view" ? "◇" : "▦"}
+                          {t.kind === 'view' ? '◇' : '▦'}
                         </span>
                         <span className="truncate">{t.name}</span>
                       </div>

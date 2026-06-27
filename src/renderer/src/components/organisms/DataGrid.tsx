@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type ColumnDef,
   getCoreRowModel,
   useReactTable,
-} from "@tanstack/react-table";
+} from '@tanstack/react-table';
 import type {
   CellValue,
   Change,
   ColumnMeta,
   PreparedStatement,
   QueryResult,
-} from "@shared/types";
+} from '@shared/types';
 import {
   buildChanges,
   cellValue,
@@ -24,10 +24,10 @@ import {
   setEdit,
   setNewRowCell,
   unsetNewRowCell,
-} from "../../lib/editState";
-import { Button } from "../atoms/Button";
-import { Menu, type MenuItemDef } from "../molecules/Menu";
-import { Modal } from "../molecules/Modal";
+} from '../../lib/editState';
+import { Button } from '../atoms/Button';
+import { Menu, type MenuItemDef } from '../molecules/Menu';
+import { Modal } from '../molecules/Modal';
 
 interface Props {
   connectionId: string;
@@ -55,7 +55,7 @@ function buildColumnDefs(columns: ColumnMeta[]): ColumnDef<Row>[] {
 }
 
 const cellCls =
-  "border border-border px-2 py-1 text-left whitespace-nowrap max-w-[360px] overflow-hidden text-ellipsis [font-variant-numeric:tabular-nums]";
+  'border border-border px-2 py-1 text-left whitespace-nowrap max-w-[360px] overflow-hidden text-ellipsis [font-variant-numeric:tabular-nums]';
 
 export function DataGrid({
   connectionId,
@@ -88,7 +88,7 @@ export function DataGrid({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [focused, setFocused] = useState<CellPos | null>(null);
   const [editing, setEditing] = useState<CellPos | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState('');
   const [menu, setMenu] = useState<CellMenu | null>(null);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
@@ -120,20 +120,20 @@ export function DataGrid({
   useEffect(() => {
     if (!menu) return;
     const close = (): void => setMenu(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
   }, [menu]);
 
   // Global Cmd/Ctrl+S commits pending changes, regardless of where focus is.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         commitRef.current();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // End any in-progress row drag when the button is released anywhere.
@@ -141,8 +141,8 @@ export function DataGrid({
     const onUp = (): void => {
       pressRowRef.current = null;
     };
-    window.addEventListener("mouseup", onUp);
-    return () => window.removeEventListener("mouseup", onUp);
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
   }, []);
 
   const counts = countChanges(result, edits, deleted, newRows);
@@ -176,7 +176,7 @@ export function DataGrid({
       current = result.rows[pos.row][colIndex(pos.col)];
     }
     setEditing(pos);
-    setDraft(current === null ? "" : String(current));
+    setDraft(current === null ? '' : String(current));
   }
 
   function commitEdit(value: CellValue): void {
@@ -257,7 +257,7 @@ export function DataGrid({
     try {
       const res = await window.api.commitChanges(connectionId, changes);
       if (res.ok) onReload();
-      else setCommitError(res.error ?? "Commit failed");
+      else setCommitError(res.error ?? 'Commit failed');
     } finally {
       setCommitting(false);
     }
@@ -268,13 +268,13 @@ export function DataGrid({
     if (changes.length === 0) return;
     if (invalidRows.size > 0) {
       setCommitError(
-        `${invalidRows.size} new row${invalidRows.size !== 1 ? "s are" : " is"} ` +
+        `${invalidRows.size} new row${invalidRows.size !== 1 ? 's are' : ' is'} ` +
           `missing a required value.`,
       );
       return;
     }
     const hasWarn = changes.some(
-      (c) => "key" in c && c.key.identity === "allColumns",
+      (c) => 'key' in c && c.key.identity === 'allColumns',
     );
     if (hasWarn) {
       const statements = await window.api.prepareChanges(connectionId, changes);
@@ -288,16 +288,16 @@ export function DataGrid({
 
   function onKeyDown(e: React.KeyboardEvent): void {
     if (editing) return;
-    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && focused) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace' && focused) {
       e.preventDefault();
       setNull(focused);
     } else if (
-      (e.key === "Delete" || e.key === "Backspace") &&
+      (e.key === 'Delete' || e.key === 'Backspace') &&
       selected.size > 0
     ) {
       e.preventDefault();
       toggleDelete(selected);
-    } else if (e.key === "Enter" && focused) {
+    } else if (e.key === 'Enter' && focused) {
       e.preventDefault();
       startEdit(focused);
     }
@@ -308,18 +308,18 @@ export function DataGrid({
     if (m.isNew) {
       if (m.col && colMeta.get(m.col)?.nullable) {
         items.push({
-          label: "Set NULL",
+          label: 'Set NULL',
           onClick: () => setNull({ row: m.row, col: m.col, isNew: true }),
         });
       }
       if (m.col && !colMeta.get(m.col)?.isGenerated) {
         items.push({
-          label: "Set DEFAULT",
+          label: 'Set DEFAULT',
           onClick: () => setDefault({ row: m.row, col: m.col, isNew: true }),
         });
       }
       items.push({
-        label: "Remove new row",
+        label: 'Remove new row',
         danger: true,
         onClick: () => removeNewRow(m.row),
       });
@@ -327,12 +327,12 @@ export function DataGrid({
     }
     if (m.col && colMeta.get(m.col)?.nullable) {
       items.push({
-        label: "Set NULL",
+        label: 'Set NULL',
         onClick: () => setNull({ row: m.row, col: m.col }),
       });
     }
     items.push({
-      label: deleted.has(m.row) ? "Undo delete" : "Delete row",
+      label: deleted.has(m.row) ? 'Undo delete' : 'Delete row',
       danger: true,
       onClick: () => {
         toggleDelete(selected.size > 0 ? selected : [m.row]);
@@ -350,10 +350,10 @@ export function DataGrid({
         defaultValue={draft}
         onBlur={(e) => commitEdit(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === 'Enter') {
             e.preventDefault();
             commitEdit((e.target as HTMLInputElement).value);
-          } else if (e.key === "Escape") {
+          } else if (e.key === 'Escape') {
             e.preventDefault();
             setEditing(null);
           }
@@ -385,11 +385,11 @@ export function DataGrid({
                     title={meta?.dataType}
                     className={`${cellCls} bg-panel sticky top-0`}
                   >
-                    {meta?.isPrimaryKey ? "🔑 " : ""}
+                    {meta?.isPrimaryKey ? '🔑 ' : ''}
                     {h.column.id}
                     {requiredNames.has(h.column.id) ? (
                       <span className="text-danger" title="Required on insert">
-                        {" "}
+                        {' '}
                         *
                       </span>
                     ) : null}
@@ -407,8 +407,8 @@ export function DataGrid({
                 <tr
                   key={row.id}
                   className={`
-                    ${isDel ? "opacity-60" : ""}
-                    ${isSel ? "bg-accent/30" : "bg-panel"}`}
+                    ${isDel ? 'opacity-60' : ''}
+                    ${isSel ? 'bg-accent/30' : 'bg-panel'}`}
                   onMouseDown={() => {
                     pressRowRef.current = ri;
                     draggingRef.current = false;
@@ -434,7 +434,7 @@ export function DataGrid({
                     onContextMenu={(e) => {
                       e.preventDefault();
                       if (!selected.has(ri)) setSelected(new Set([ri]));
-                      setMenu({ x: e.clientX, y: e.clientY, row: ri, col: "" });
+                      setMenu({ x: e.clientX, y: e.clientY, row: ri, col: '' });
                     }}
                   >
                     {ri + 1}
@@ -456,9 +456,9 @@ export function DataGrid({
                       <td
                         key={cell.id}
                         className={`
-                          ${cellCls} ${dirty ? "bg-accent/20" : ""} 
-                          ${isFocused ? "ring-1 ring-accent ring-inset" : ""} 
-                          ${isDel ? "line-through text-danger" : ""}`}
+                          ${cellCls} ${dirty ? 'bg-accent/20' : ''} 
+                          ${isFocused ? 'ring-1 ring-accent ring-inset' : ''} 
+                          ${isDel ? 'line-through text-danger' : ''}`}
                         onClick={() => {
                           if (draggingRef.current) return;
                           if (editable) setFocused({ row: ri, col: colName });
@@ -508,7 +508,7 @@ export function DataGrid({
                         x: e.clientX,
                         y: e.clientY,
                         row: nr.tempId,
-                        col: "",
+                        col: '',
                         isNew: true,
                       });
                     }}
@@ -536,9 +536,9 @@ export function DataGrid({
                       <td
                         key={colName}
                         className={`${cellCls} ${
-                          isFocused ? "ring-1 ring-accent ring-inset" : ""
-                        } ${missing ? "ring-1 ring-danger ring-inset" : ""} ${
-                          generated ? "text-muted" : ""
+                          isFocused ? 'ring-1 ring-accent ring-inset' : ''
+                        } ${missing ? 'ring-1 ring-danger ring-inset' : ''} ${
+                          generated ? 'text-muted' : ''
                         }`}
                         onClick={() =>
                           !generated &&
@@ -599,9 +599,9 @@ export function DataGrid({
           {counts.total > 0 && (
             <span className="text-muted">
               {counts.total} pending: {counts.updates} update
-              {counts.updates !== 1 && "s"}, {counts.inserts} insert
-              {counts.inserts !== 1 && "s"}, {counts.deletes} delete
-              {counts.deletes !== 1 && "s"}
+              {counts.updates !== 1 && 's'}, {counts.inserts} insert
+              {counts.inserts !== 1 && 's'}, {counts.deletes} delete
+              {counts.deletes !== 1 && 's'}
             </span>
           )}
           {commitError && <span className="text-danger">{commitError}</span>}
@@ -621,7 +621,7 @@ export function DataGrid({
                 disabled={committing}
                 title="Cmd/Ctrl+S"
               >
-                {committing ? "Committing…" : "Commit"}
+                {committing ? 'Committing…' : 'Commit'}
               </Button>
             </div>
           )}
@@ -661,7 +661,7 @@ function WarningDialog({
         ⚠️ Some rows can't be uniquely identified
       </h2>
       <p className="text-muted mb-3">
-        {warned.length} statement{warned.length !== 1 && "s"} match on all
+        {warned.length} statement{warned.length !== 1 && 's'} match on all
         column values and may affect more than one row. Commit anyway?
       </p>
       <Button
@@ -669,11 +669,11 @@ function WarningDialog({
         className="py-1 mb-2"
         onClick={() => setShowSql((s) => !s)}
       >
-        {showSql ? "Hide SQL" : "View SQL"}
+        {showSql ? 'Hide SQL' : 'View SQL'}
       </Button>
       {showSql && (
         <pre className="bg-bg border border-border rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-          {warning.statements.map((s) => `${s.sql};`).join("\n")}
+          {warning.statements.map((s) => `${s.sql};`).join('\n')}
         </pre>
       )}
       <div className="flex justify-end gap-2 mt-4">
@@ -681,7 +681,7 @@ function WarningDialog({
           Cancel
         </Button>
         <Button onClick={onConfirm} disabled={committing}>
-          {committing ? "Committing…" : "Commit anyway"}
+          {committing ? 'Committing…' : 'Commit anyway'}
         </Button>
       </div>
     </Modal>

@@ -1,4 +1,4 @@
-import { Button } from "../atoms/Button";
+import { Button } from '../atoms/Button';
 
 interface Props {
   connected: boolean;
@@ -26,11 +26,11 @@ export function Toolbar({
         disabled={!connected}
         title="Toggle SQL editor"
       >
-        {showSql ? "Close Sql Editor" : "Open Sql Editor"}
+        {showSql ? 'Close Sql Editor' : 'Open Sql Editor'}
       </Button>
       <Button
         variant="ghost"
-        className={`app-no-drag px-2 py-0.5 text-xs ${filterShown ? "border-accent text-text" : ""}`}
+        className={`app-no-drag px-2 py-0.5 text-xs ${filterShown ? 'border-accent text-text' : ''}`}
         onClick={onToggleFilter}
         disabled={!connected}
         title="Toggle filter"
@@ -38,7 +38,7 @@ export function Toolbar({
         Filter
       </Button>
       <span className="text-muted">
-        {connected ? "Connected" : "Pick a connection"}
+        {connected ? 'Connected' : 'Pick a connection'}
       </span>
       {error && <span className="text-danger">{error}</span>}
     </div>
