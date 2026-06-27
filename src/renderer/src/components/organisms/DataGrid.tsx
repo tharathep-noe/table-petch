@@ -26,7 +26,7 @@ import {
   unsetNewRowCell,
 } from '../../lib/editState';
 import { Button } from '../atoms/Button';
-import { Menu, type MenuItemDef } from '../molecules/Menu';
+import { Menu, type MenuEntry, type MenuItemDef } from '../molecules/Menu';
 import { Modal } from '../molecules/Modal';
 
 interface Props {
@@ -92,6 +92,8 @@ export function DataGrid({
   const [menu, setMenu] = useState<CellMenu | null>(null);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [warning, setWarning] = useState<{
     changes: Change[];
     statements: PreparedStatement[];
@@ -144,6 +146,14 @@ export function DataGrid({
     window.addEventListener('mouseup', onUp);
     return () => window.removeEventListener('mouseup', onUp);
   }, []);
+
+  // Clear the pending "copied" toast timer if the grid unmounts.
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   const counts = countChanges(result, edits, deleted, newRows);
   const invalidRows = useMemo(
@@ -288,6 +298,20 @@ export function DataGrid({
 
   function onKeyDown(e: React.KeyboardEvent): void {
     if (editing) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+      const idxs =
+        selected.size > 0
+          ? [...selected].sort((a, b) => a - b)
+          : focused && !focused.isNew
+            ? [focused.row]
+            : [];
+      if (idxs.length > 0) {
+        e.preventDefault();
+        const suffix = idxs.length > 1 ? ` (${idxs.length} rows)` : '';
+        void copy(toDelimited(idxs, '\t', false), `Copied${suffix}`);
+      }
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace' && focused) {
       e.preventDefault();
       setNull(focused);
@@ -303,36 +327,149 @@ export function DataGrid({
     }
   }
 
-  const menuItems = (m: CellMenu): MenuItemDef[] => {
-    const items: MenuItemDef[] = [];
+  // ---- Copy / export ------------------------------------------------------
+
+  /** Current (edit-aware) text of an existing-row cell. */
+  function cellText(ri: number, col: ColumnMeta): CellValue {
+    const original = result.rows[ri][colIndex(col.name)];
+    return cellValue(edits, ri, col.name, original);
+  }
+
+  /** Which existing rows a copy acts on: the selection, else the menu row. */
+  function copyTargets(m: CellMenu): number[] {
+    if (selected.size > 0) return [...selected].sort((a, b) => a - b);
+    return [m.row];
+  }
+
+  const sqlIdent = (s: string): string => `"${s.replace(/"/g, '""')}"`;
+  const sqlLiteral = (v: CellValue): string =>
+    v === null ? 'NULL' : `'${v.replace(/'/g, "''")}'`;
+  const csvField = (v: CellValue): string => {
+    if (v === null) return '';
+    return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
+
+  /** Tab- or comma-separated text; NULL becomes an empty field. */
+  function toDelimited(
+    rowIdxs: number[],
+    sep: '\t' | ',',
+    withHeader: boolean,
+  ): string {
+    const fmt = sep === ',' ? csvField : (v: CellValue): string => v ?? '';
+    const lines: string[] = [];
+    if (withHeader)
+      lines.push(result.columns.map((c) => fmt(c.name)).join(sep));
+    for (const ri of rowIdxs) {
+      lines.push(result.columns.map((c) => fmt(cellText(ri, c))).join(sep));
+    }
+    return lines.join('\n');
+  }
+
+  /** A single multi-row INSERT statement for the copied rows. */
+  function toInsert(rowIdxs: number[]): string {
+    if (!result.table) return '';
+    const t = result.table;
+    const colList = result.columns.map((c) => sqlIdent(c.name)).join(', ');
+    const tuples = rowIdxs.map(
+      (ri) =>
+        `  (${result.columns.map((c) => sqlLiteral(cellText(ri, c))).join(', ')})`,
+    );
+    return (
+      `INSERT INTO ${sqlIdent(t.schema)}.${sqlIdent(t.name)} (${colList})\n` +
+      `VALUES\n${tuples.join(',\n')};`
+    );
+  }
+
+  async function copy(text: string, label: string): Promise<void> {
+    setMenu(null);
+    try {
+      console.log('text', text);
+      console.log('label', label);
+      await navigator.clipboard.writeText(text);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      setFlash(label);
+      flashTimer.current = setTimeout(() => setFlash(null), 1600);
+    } catch {
+      setCommitError('Could not access the clipboard.');
+    }
+  }
+
+  /** The reusable "Copy ▸" submenu for a set of existing rows. */
+  function copyMenu(rowIdxs: number[]): MenuItemDef {
+    const n = rowIdxs.length;
+    const suffix = n > 1 ? ` (${n} rows)` : '';
+    return {
+      label: 'Copy',
+      icon: '⧉',
+      children: [
+        {
+          label: 'Copy values',
+          shortcut: '⌘C',
+          onClick: () =>
+            copy(toDelimited(rowIdxs, '\t', false), `Copied${suffix}`),
+        },
+        {
+          label: 'Copy as CSV',
+          onClick: () =>
+            copy(toDelimited(rowIdxs, ',', false), `Copied CSV${suffix}`),
+        },
+        {
+          label: 'Copy with header',
+          onClick: () =>
+            copy(
+              toDelimited(rowIdxs, ',', true),
+              `Copied CSV + header${suffix}`,
+            ),
+        },
+        {
+          label: 'Copy as INSERT',
+          onClick: () => copy(toInsert(rowIdxs), `Copied INSERT${suffix}`),
+        },
+      ],
+    };
+  }
+
+  const menuItems = (m: CellMenu): MenuEntry[] => {
+    const items: MenuEntry[] = [];
     if (m.isNew) {
       if (m.col && colMeta.get(m.col)?.nullable) {
         items.push({
           label: 'Set NULL',
+          icon: '∅',
           onClick: () => setNull({ row: m.row, col: m.col, isNew: true }),
         });
       }
       if (m.col && !colMeta.get(m.col)?.isGenerated) {
         items.push({
           label: 'Set DEFAULT',
+          icon: '↺',
           onClick: () => setDefault({ row: m.row, col: m.col, isNew: true }),
         });
       }
+      if (items.length > 0) items.push('separator');
       items.push({
         label: 'Remove new row',
+        icon: '✕',
         danger: true,
         onClick: () => removeNewRow(m.row),
       });
       return items;
     }
+
+    items.push(copyMenu(copyTargets(m)));
+    items.push('separator');
+
     if (m.col && colMeta.get(m.col)?.nullable) {
       items.push({
         label: 'Set NULL',
+        icon: '∅',
+        shortcut: '⌘⌫',
         onClick: () => setNull({ row: m.row, col: m.col }),
       });
     }
     items.push({
       label: deleted.has(m.row) ? 'Undo delete' : 'Delete row',
+      icon: '🗑',
       danger: true,
       onClick: () => {
         toggleDelete(selected.size > 0 ? selected : [m.row]);
@@ -629,6 +766,13 @@ export function DataGrid({
       )}
 
       {menu && <Menu x={menu.x} y={menu.y} items={menuItems(menu)} />}
+
+      {flash && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-border bg-panel/95 px-4 py-2 text-sm shadow-2xl shadow-black/40 backdrop-blur">
+          <span className="text-success">✓</span>
+          {flash}
+        </div>
+      )}
 
       {warning && (
         <WarningDialog
