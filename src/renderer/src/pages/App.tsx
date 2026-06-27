@@ -102,6 +102,24 @@ export function App(): JSX.Element {
     refreshConnections();
   }, []);
 
+  // Block the browser's "select all" (Cmd/Ctrl+A) from highlighting the whole
+  // window chrome. Still allowed inside real text editors (inputs, textareas,
+  // and CodeMirror's contenteditable), where select-all is expected.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'a') return;
+      const el = e.target as HTMLElement | null;
+      const inEditor =
+        !!el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.isContentEditable);
+      if (!inEditor) e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Dismiss the connection context menu on any outside click.
   useEffect(() => {
     if (!menu) return;
