@@ -8,6 +8,7 @@ export const CH = {
   disconnect: 'db:disconnect',
   switchDatabase: 'db:switch',
   listSchema: 'db:schema',
+  getRoutineSource: 'db:routineSource',
   loadRows: 'db:loadRows',
   runQuery: 'db:runQuery',
   prepareChanges: 'db:prepare',

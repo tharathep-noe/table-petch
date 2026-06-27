@@ -25,6 +25,38 @@
     background: var(--color-bg);
     color: var(--color-text);
   }
+
+  /* Scrollbars — thin, rounded, theme-tinted; applies to every scroll area
+     (sidebar, the grid's vertical + bottom-horizontal bars, tabs, modals).
+     Chromium-only pseudo-elements; the standard props below are the fallback. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    /* Inset look: paint the thumb, then a transparent border carves the gap. */
+    background-color: var(--color-border);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-muted);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background-color: var(--color-accent);
+  }
+  /* Where the vertical and horizontal bars meet — keep it transparent. */
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 /* Window drag regions (frameless / hiddenInset title bar). Apply `app-drag`

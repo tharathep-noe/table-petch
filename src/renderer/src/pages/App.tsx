@@ -4,6 +4,7 @@ import type {
   HistoryEntry,
   PersistedSession,
   QueryResult,
+  RoutineRef,
   SavedQuery,
   SchemaInfo,
   TableRef,
@@ -338,6 +339,26 @@ export function App(): JSX.Element {
     setActiveTabId(t.id);
   }
 
+  // Open a routine's CREATE OR REPLACE source in a fresh, un-run SQL tab. The
+  // tab appears immediately (titled by name); the source streams in, or a
+  // per-tab error shows if the routine was dropped between listing and click.
+  function openRoutine(routine: RoutineRef): void {
+    if (!activeId) return;
+    const t: Tab = {
+      ...makeTab(),
+      title: routine.name,
+      showSql: true,
+    };
+    setTabs((ts) => [...ts, t]);
+    setActiveTabId(t.id);
+    window.api
+      .getRoutineSource(activeId, routine.oid)
+      .then((sql) => updateTab(t.id, { sqlText: sql, error: null }))
+      .catch((e) =>
+        updateTab(t.id, { error: e instanceof Error ? e.message : String(e) }),
+      );
+  }
+
   async function submitSaveQuery(): Promise<void> {
     if (!saveModal || !saveName.trim()) return;
     await window.api.saveQuery({
@@ -413,6 +434,7 @@ export function App(): JSX.Element {
           }}
           onSwitchDatabase={switchDatabase}
           onOpenTable={openTable}
+          onOpenRoutine={openRoutine}
           savedQueries={savedQueries}
           queryHistory={queryHistory}
           onOpenSql={openSql}

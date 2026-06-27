@@ -71,7 +71,8 @@ data, plus a SQL editor.
 
 - MySQL / SQLite engines
 - SSH tunnel / SSL certificates
-- Materialized views, functions, sequences, types, indexes in the tree
+- Materialized views, sequences, types, indexes in the tree (functions &
+  procedures now scoped — see "Routines" below)
 - Rich per-type editors (date pickers, JSON tree editor, array chips)
 - Keyset pagination
 - **Grid virtualization** (`@tanstack/react-virtual`) — add when result sets
@@ -194,6 +195,50 @@ Decisions fixed during design:
     top of `Sidebar`; the selected view swaps the sidebar body. Connection and
     active-tab state stay global across views. Database remains the existing
     connections → databases → schemas → tables tree.
+
+## Routines (functions & procedures) — build steps (next pass)
+
+Surface user-defined **routines** in the schema tree and let the user view a
+routine's source. Scope: `pg_proc.prokind in ('f','p')` in non-system schemas
+(same filter as tables); aggregates/window functions deferred. A routine is
+identified by `oid` and displayed by its signature (overloads share a name).
+Clicking a routine opens its real `CREATE OR REPLACE …` definition into a fresh,
+un-run, **editable** SQL [[tab]] — no dedicated viewer. See ADR 0004.
+
+Decisions fixed during design:
+
+- **List metadata eager, source lazy.** `listSchema` returns routine metadata
+  (`oid`, `name`, `kind`, signature) per schema; the source body is fetched on
+  click via a new `getRoutineSource`, never bundled into the list (bodies can be
+  huge).
+- **Identity by `oid`, display by signature** (`pg_get_function_identity_arguments`).
+  Routines are never persisted into the session, so oid instability across
+  restarts is a non-issue — the opened source rides existing `sqlText` persistence.
+- **Section label is "Routines"** (not "Functions" — that would overload the
+  glossary term); per-row icons distinguish function (`ƒ`) from procedure. The
+  sub-label renders only when a schema has ≥1 routine.
+
+1. **Shared contract** — add `RoutineRef { schema; name; kind: 'function' |
+'procedure'; oid; signature }` to `src/shared/types.ts`; extend
+   `SchemaInfo.schemas[]` with `routines: RoutineRef[]`. Add
+   `getRoutineSource(connectionId, oid): Promise<string>` to `TablePetchApi` and a
+   channel name in `src/shared/channels.ts`.
+2. **Introspection** — in `src/main/db/introspect.ts`, add a 4th parallel query to
+   `listSchema`: join `pg_proc`/`pg_namespace`, filter `prokind in ('f','p')` and
+   the existing non-system-schema filter, select `oid`, `proname`,
+   `prokind`, and `pg_get_function_identity_arguments(oid)` for the signature;
+   group into each schema's `routines`. Add `getRoutineSource(connectionId, oid)`
+   running `pg_get_functiondef($1)` (read-only).
+3. **Preload + IPC** — expose `getRoutineSource` on `window.api`; register the
+   handler in `src/main/ipc.ts`.
+4. **Renderer tree** — in `Sidebar`'s `DatabaseView`, after each schema's tables
+   render a conditional "Routines" sub-label (only when `s.routines.length > 0`)
+   then the routines: per-row function/procedure icon + signature label, click →
+   new handler `onOpenRoutine(ref)`.
+5. **Open flow** — in `App.tsx`, `onOpenRoutine` calls `getRoutineSource`, then
+   `onOpenSql(source)` (existing un-run SQL-tab path), titling the tab by the
+   routine name. A dropped routine (fetch fails) surfaces a per-tab error, same as
+   a dropped-table restore.
 
 ## Suggested build order
 

@@ -33,12 +33,26 @@ export interface TableRef {
   kind: 'table' | 'view';
 }
 
+/** A user-defined function or procedure. Identified by `oid` (name is not unique
+ *  — Postgres allows overloading); `signature` is for display only. */
+export interface RoutineRef {
+  schema: string;
+  name: string;
+  kind: 'function' | 'procedure';
+  /** pg_proc oid — exact identity, passed to getRoutineSource. Session-local. */
+  oid: number;
+  /** Identity arguments for display, e.g. "integer, integer". Distinguishes
+   *  overloads in the tree; not used for identity. */
+  signature: string;
+}
+
 export interface SchemaInfo {
   database: string;
   databases: string[]; // all databases on the server, for the switcher
   schemas: Array<{
     name: string;
     tables: TableRef[];
+    routines: RoutineRef[];
   }>;
 }
 
@@ -188,6 +202,8 @@ export interface TablePetchApi {
   switchDatabase(connectionId: string, database: string): Promise<void>;
 
   listSchema(connectionId: string): Promise<SchemaInfo>;
+  /** The `CREATE OR REPLACE …` definition of a routine, fetched on click. */
+  getRoutineSource(connectionId: string, oid: number): Promise<string>;
   loadRows(req: LoadRowsRequest): Promise<QueryResult>;
   runQuery(connectionId: string, sql: string): Promise<QueryResult>;
 

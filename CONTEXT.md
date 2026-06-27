@@ -51,6 +51,25 @@ How a row is located for UPDATE/DELETE: primary key → a fully-non-null unique 
 warning. New rows have no row identity (nothing to locate yet).
 _Avoid_: row key (ambiguous with primary key)
 
+### Routines (functions & procedures)
+
+**Routine**:
+The umbrella term for a user-defined **function** or **procedure** stored in the
+database (Postgres `pg_proc`, `prokind in ('f','p')`). The canonical name across
+the renderer, the IPC contract, and the database layer — chosen over "function"
+(which would overload the `kind`) to match the SQL standard (`information_schema.routines`,
+`DROP ROUTINE`). A routine is identified by `RoutineRef { schema, name, kind }`,
+mirroring [[tab]]/`TableRef`. Only user-defined routines in non-system schemas are
+listed (the same schema filter as tables); aggregates and window functions are out
+of scope for now.
+_Avoid_: function (as an umbrella), proc, stored proc, sproc
+
+**Routine kind**:
+Either `function` (returns a value) or `procedure` (PG11+, no return, invoked with
+`CALL`). The discriminator on a [[routine]], exactly as `kind: 'table' | 'view'`
+discriminates a table from a view.
+_Avoid_: type, prokind
+
 ### App state (what survives a restart)
 
 Three distinct concerns, never conflated. None of them stores fetched row data —

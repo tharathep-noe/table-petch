@@ -24,6 +24,8 @@ const api: TablePetchApi = {
     ipcRenderer.invoke(CH.switchDatabase, id, database),
 
   listSchema: (id: string) => ipcRenderer.invoke(CH.listSchema, id),
+  getRoutineSource: (id: string, oid: number) =>
+    ipcRenderer.invoke(CH.getRoutineSource, id, oid),
   loadRows: (req: LoadRowsRequest) => ipcRenderer.invoke(CH.loadRows, req),
   runQuery: (id: string, sql: string) =>
     ipcRenderer.invoke(CH.runQuery, id, sql),

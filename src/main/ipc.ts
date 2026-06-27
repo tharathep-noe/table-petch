@@ -12,7 +12,7 @@ import * as session from './sessionStore';
 import * as history from './historyStore';
 import * as savedQueries from './savedQueryStore';
 import * as mgr from './db/manager';
-import { listSchema } from './db/introspect';
+import { getRoutineSource, listSchema } from './db/introspect';
 import { loadRows, runQuery } from './db/query';
 import { commitChanges, prepareChanges } from './db/commit';
 
@@ -36,6 +36,9 @@ export function registerIpc(): void {
   );
 
   ipcMain.handle(CH.listSchema, (_e, id: string) => listSchema(id));
+  ipcMain.handle(CH.getRoutineSource, (_e, id: string, oid: number) =>
+    getRoutineSource(id, oid),
+  );
   ipcMain.handle(CH.loadRows, (_e, req: LoadRowsRequest) => loadRows(req));
   ipcMain.handle(CH.runQuery, (_e, id: string, sql: string) =>
     runQuery(id, sql),

@@ -1,5 +1,10 @@
 import { getPool } from './manager';
-import type { ColumnMeta, SchemaInfo, TableRef } from '@shared/types';
+import type {
+  ColumnMeta,
+  RoutineRef,
+  SchemaInfo,
+  TableRef,
+} from '@shared/types';
 
 // Introspection queries against the Postgres catalog. Kept read-only.
 
@@ -23,27 +28,88 @@ export async function listSchema(connectionId: string): Promise<SchemaInfo> {
       order by n.nspname, c.relname`,
   );
 
-  const [dbs, current, objs] = await Promise.all([dbsP, currentP, objsP]);
+  // User-defined functions and procedures (prokind 'f'/'p') in user schemas.
+  // oid is exact identity (names overload); identity_arguments is for display.
+  const routinesP = pool.query<{
+    schema: string;
+    name: string;
+    kind: string;
+    oid: string;
+    signature: string;
+  }>(
+    `select n.nspname as schema, p.proname as name,
+            case p.prokind when 'f' then 'function' when 'p' then 'procedure' end as kind,
+            p.oid::text as oid,
+            pg_get_function_identity_arguments(p.oid) as signature
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+      where p.prokind in ('f','p')
+        and n.nspname not in ('pg_catalog','information_schema')
+        and n.nspname not like 'pg_toast%'
+      order by n.nspname, p.proname, signature`,
+  );
 
-  const bySchema = new Map<string, TableRef[]>();
+  const [dbs, current, objs, routines] = await Promise.all([
+    dbsP,
+    currentP,
+    objsP,
+    routinesP,
+  ]);
+
+  const tablesBySchema = new Map<string, TableRef[]>();
   for (const r of objs.rows) {
-    const list = bySchema.get(r.schema) ?? [];
+    const list = tablesBySchema.get(r.schema) ?? [];
     list.push({
       schema: r.schema,
       name: r.name,
       kind: r.kind as TableRef['kind'],
     });
-    bySchema.set(r.schema, list);
+    tablesBySchema.set(r.schema, list);
   }
+
+  const routinesBySchema = new Map<string, RoutineRef[]>();
+  for (const r of routines.rows) {
+    const list = routinesBySchema.get(r.schema) ?? [];
+    list.push({
+      schema: r.schema,
+      name: r.name,
+      kind: r.kind as RoutineRef['kind'],
+      oid: Number(r.oid),
+      signature: r.signature,
+    });
+    routinesBySchema.set(r.schema, list);
+  }
+
+  // Union of schema names: a schema may hold only routines, or only tables.
+  const schemaNames = [
+    ...new Set([...tablesBySchema.keys(), ...routinesBySchema.keys()]),
+  ].sort();
 
   return {
     database: current.rows[0].current_database,
     databases: dbs.rows.map((r) => r.datname),
-    schemas: [...bySchema.entries()].map(([name, tables]) => ({
+    schemas: schemaNames.map((name) => ({
       name,
-      tables,
+      tables: tablesBySchema.get(name) ?? [],
+      routines: routinesBySchema.get(name) ?? [],
     })),
   };
+}
+
+/** The `CREATE OR REPLACE …` definition of a routine, by oid. Read-only. */
+export async function getRoutineSource(
+  connectionId: string,
+  oid: number,
+): Promise<string> {
+  const pool = getPool(connectionId);
+  const { rows } = await pool.query<{ def: string }>(
+    `select pg_get_functiondef($1) as def`,
+    [oid],
+  );
+  if (rows.length === 0 || rows[0].def == null) {
+    throw new Error(`Routine ${oid} not found (it may have been dropped).`);
+  }
+  return rows[0].def;
 }
 
 export interface TableColumns {

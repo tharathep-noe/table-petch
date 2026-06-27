@@ -1,16 +1,76 @@
 import type {
   ConnectionConfig,
   HistoryEntry,
+  RoutineRef,
   SavedQuery,
   SchemaInfo,
   TableRef,
 } from '@shared/types';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../atoms/Button';
 import { Select } from '../atoms/Select';
-import logo from '../../assets/main-logo.png';
 
 const sectionLabel =
   'text-[11px] font-semibold uppercase tracking-wider text-muted';
+
+/** A collapsible section with a clickable header that toggles its body. */
+function CollapsibleSection({
+  label,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`${sectionLabel} mb-1 mt-2 px-1 flex w-full items-center gap-1 cursor-pointer hover:text-text transition-colors`}
+      >
+        <span
+          className={`inline-block text-[9px] transition-transform ${
+            expanded ? 'rotate-90' : ''
+          }`}
+        >
+          ▶
+        </span>
+        <span>{label}</span>
+        <span className="text-muted/60 normal-case font-normal">{count}</span>
+      </button>
+      {expanded && children}
+    </>
+  );
+}
+
+// Resizable-width chrome. Persisted in localStorage (renderer-only UI
+// preference — not session/domain state, so it stays off the IPC contract).
+const SIDEBAR_MIN_W = 180;
+const SIDEBAR_MAX_W = 480;
+const SIDEBAR_DEFAULT_W = 256; // the former hard-coded w-64
+const SIDEBAR_WIDTH_KEY = 'sidebarWidth';
+
+const clamp = (n: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, n));
+
+function useSidebarWidth(): readonly [number, (w: number) => void] {
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    return saved >= SIDEBAR_MIN_W && saved <= SIDEBAR_MAX_W
+      ? saved
+      : SIDEBAR_DEFAULT_W;
+  });
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  }, [width]);
+  return [width, setWidth] as const;
+}
 
 export type SidebarView = 'database' | 'queries' | 'history';
 
@@ -27,6 +87,7 @@ interface Props {
   onConnectionMenu: (e: React.MouseEvent, conn: ConnectionConfig) => void;
   onSwitchDatabase: (db: string) => void;
   onOpenTable: (table: TableRef) => void;
+  onOpenRoutine: (routine: RoutineRef) => void;
 
   savedQueries: SavedQuery[];
   queryHistory: HistoryEntry[];
@@ -46,8 +107,33 @@ const VIEWS: Array<{ key: SidebarView; label: string }> = [
 
 export function Sidebar(props: Props): JSX.Element {
   const { view, onChangeView } = props;
+  const [width, setWidth] = useSidebarWidth();
+  const drag = useRef<{ startX: number; startW: number } | null>(null);
+
+  function onResizeStart(e: React.PointerEvent): void {
+    drag.current = { startX: e.clientX, startW: width };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onResizeMove(e: React.PointerEvent): void {
+    if (!drag.current) return;
+    setWidth(
+      clamp(
+        drag.current.startW + (e.clientX - drag.current.startX),
+        SIDEBAR_MIN_W,
+        SIDEBAR_MAX_W,
+      ),
+    );
+  }
+  function onResizeEnd(e: React.PointerEvent): void {
+    drag.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  }
+
   return (
-    <aside className="w-64 bg-panel border-r border-border flex flex-col">
+    <aside
+      style={{ width }}
+      className="relative bg-panel border-r border-border flex flex-col"
+    >
       <div className="flex-1 overflow-y-auto ps-3 pe-2 pb-2">
         {/* Draggable header; pt clears the macOS traffic-light buttons. */}
         <div className="app-drag pt-[53px] mb-2">
@@ -73,20 +159,15 @@ export function Sidebar(props: Props): JSX.Element {
         {view === 'history' && <HistoryView {...props} />}
       </div>
 
-      {/* Footer: brand logo pinned to the bottom of the sidebar. */}
-      <div className="relative flex flex-col items-center gap-1.5 border-t border-border bg-linear-to-b from-transparent to-bg/40 px-3 py-4">
-        <div className="relative flex items-center justify-center">
-          <div className="absolute h-20 w-20 rounded-full bg-accent/20 blur-2xl" />
-          <img
-            src={logo}
-            alt="tablePetch"
-            className="relative h-28 w-28 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)]"
-          />
-        </div>
-        <span className="text-[10px] uppercase tracking-widest text-muted">
-          v0.0.1
-        </span>
-      </div>
+      {/* Right-edge drag handle. app-no-drag so it resizes (not move-window)
+          where it overlaps the draggable header strip at the top. */}
+      <div
+        onPointerDown={onResizeStart}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeEnd}
+        title="Drag to resize"
+        className="app-no-drag absolute top-0 -right-0.5 z-10 h-full w-1.5 cursor-col-resize hover:bg-accent/40 active:bg-accent/60 transition-colors"
+      />
     </aside>
   );
 }
@@ -101,7 +182,19 @@ function DatabaseView({
   onConnectionMenu,
   onSwitchDatabase,
   onOpenTable,
+  onOpenRoutine,
 }: Props): JSX.Element {
+  // Per-section collapse state, keyed by `${schema}:tables|routines`.
+  // Sections default to expanded; only collapsed keys are tracked.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (key: string): void =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   return (
     <>
       <div className="flex items-center justify-between mb-2">
@@ -165,32 +258,70 @@ function DatabaseView({
           {schema.schemas.map((s) => (
             <div key={s.name} className="mt-4">
               <div className={`${sectionLabel} mb-1 px-1`}>{s.name}</div>
-              <div className="flex flex-col gap-0.5 ms-1.5 ps-2 border-s border-border">
-                {s.tables.map((t) => {
-                  const isOpen =
-                    currentTable?.schema === t.schema &&
-                    currentTable?.name === t.name;
-                  return (
-                    <div
-                      key={`${t.schema}.${t.name}`}
-                      className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer text-sm transition-colors ${
-                        isOpen
-                          ? 'bg-accent/15 text-text font-medium'
-                          : 'text-text/90 hover:bg-border/60'
-                      }`}
-                      onClick={() => onOpenTable(t)}
-                      title={`${t.schema}.${t.name}`}
-                    >
-                      <span
-                        className={`shrink-0 ${t.kind === 'view' ? 'text-muted' : 'text-accent'}`}
+
+              <CollapsibleSection
+                label="Tables"
+                count={s.tables.length}
+                expanded={!collapsed.has(`${s.name}:tables`)}
+                onToggle={() => toggle(`${s.name}:tables`)}
+              >
+                <div className="flex flex-col gap-0.5 ms-1.5 ps-2 border-s border-border">
+                  {s.tables.map((t) => {
+                    const isOpen =
+                      currentTable?.schema === t.schema &&
+                      currentTable?.name === t.name;
+                    return (
+                      <div
+                        key={`${t.schema}.${t.name}`}
+                        className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer text-sm transition-colors ${
+                          isOpen
+                            ? 'bg-accent/15 text-text font-medium'
+                            : 'text-text/90 hover:bg-border/60'
+                        }`}
+                        onClick={() => onOpenTable(t)}
+                        title={`${t.schema}.${t.name}`}
                       >
-                        {t.kind === 'view' ? '◇' : '▦'}
-                      </span>
-                      <span className="truncate">{t.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                        <span
+                          className={`shrink-0 ${t.kind === 'view' ? 'text-muted' : 'text-accent'}`}
+                        >
+                          {t.kind === 'view' ? '◇' : '▦'}
+                        </span>
+                        <span className="truncate">{t.name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CollapsibleSection>
+
+              {s.routines.length > 0 && (
+                <CollapsibleSection
+                  label="Routines"
+                  count={s.routines.length}
+                  expanded={!collapsed.has(`${s.name}:routines`)}
+                  onToggle={() => toggle(`${s.name}:routines`)}
+                >
+                  <div className="flex flex-col gap-0.5 ms-1.5 ps-2 border-s border-border">
+                    {s.routines.map((r) => (
+                      <div
+                        key={r.oid}
+                        className="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer text-sm text-text/90 hover:bg-border/60 transition-colors"
+                        onClick={() => onOpenRoutine(r)}
+                        title={`${r.schema}.${r.name}(${r.signature})`}
+                      >
+                        <span
+                          className={`shrink-0 ${r.kind === 'procedure' ? 'text-muted' : 'text-accent'}`}
+                        >
+                          {r.kind === 'procedure' ? '▷' : 'ƒ'}
+                        </span>
+                        <span className="truncate">
+                          {r.name}
+                          <span className="text-muted">({r.signature})</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
             </div>
           ))}
         </div>
