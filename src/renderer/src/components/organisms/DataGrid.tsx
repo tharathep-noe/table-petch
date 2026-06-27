@@ -50,9 +50,16 @@ function buildColumnDefs(columns: ColumnMeta[]): ColumnDef<Row>[] {
 const cellCls =
   "border border-border px-2 py-1 text-left whitespace-nowrap max-w-[360px] overflow-hidden text-ellipsis [font-variant-numeric:tabular-nums]";
 
-export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element {
+export function DataGrid({
+  connectionId,
+  result,
+  onReload,
+}: Props): JSX.Element {
   const editable = result.editable && !!result.table;
-  const columns = useMemo(() => buildColumnDefs(result.columns), [result.columns]);
+  const columns = useMemo(
+    () => buildColumnDefs(result.columns),
+    [result.columns],
+  );
   const table = useReactTable({
     data: result.rows,
     columns,
@@ -78,6 +85,8 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
     statements: PreparedStatement[];
   } | null>(null);
   const anchorRef = useRef<number | null>(null);
+  // Lets the global keydown listener call the latest commit() closure.
+  const commitRef = useRef<() => void>(() => {});
 
   // New page loaded (table switch or post-commit reload) → drop staged state.
   useEffect(() => {
@@ -95,6 +104,18 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [menu]);
+
+  // Global Cmd/Ctrl+S commits pending changes, regardless of where focus is.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        commitRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const counts = countChanges(result, edits, deleted);
   const colIndex = (name: string): number =>
@@ -178,13 +199,12 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
       await doCommit(changes);
     }
   }
+  // Always points at the current-render commit() so the window listener is fresh.
+  commitRef.current = commit;
 
   function onKeyDown(e: React.KeyboardEvent): void {
     if (editing) return;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      commit();
-    } else if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && focused) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && focused) {
       e.preventDefault();
       setNull(focused);
     } else if (
@@ -202,7 +222,10 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
   const menuItems = (m: CellMenu): MenuItemDef[] => {
     const items: MenuItemDef[] = [];
     if (m.col && colMeta.get(m.col)?.nullable) {
-      items.push({ label: "Set NULL", onClick: () => setNull({ row: m.row, col: m.col }) });
+      items.push({
+        label: "Set NULL",
+        onClick: () => setNull({ row: m.row, col: m.col }),
+      });
     }
     items.push({
       label: deleted.has(m.row) ? "Undo delete" : "Delete row",
@@ -225,7 +248,9 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
         <table className="border-collapse w-full">
           <thead>
             <tr>
-              <th className={`${cellCls} bg-panel sticky top-0 left-0 z-10 w-10 text-muted`}>
+              <th
+                className={`${cellCls} bg-panel sticky top-0 left-0 z-10 w-10 text-muted`}
+              >
                 #
               </th>
               {table.getFlatHeaders().map((h) => {
@@ -268,20 +293,31 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
                     const original = cell.getValue() as CellValue;
                     const val = cellValue(edits, ri, colName, original);
                     const dirty = isDirty(edits, ri, colName);
-                    const isEditing = editing?.row === ri && editing?.col === colName;
-                    const isFocused = focused?.row === ri && focused?.col === colName;
+                    const isEditing =
+                      editing?.row === ri && editing?.col === colName;
+                    const isFocused =
+                      focused?.row === ri && focused?.col === colName;
                     return (
                       <td
                         key={cell.id}
                         className={`${cellCls} ${dirty ? "bg-accent/20" : ""} ${
                           isFocused ? "ring-1 ring-accent ring-inset" : ""
                         } ${isDel ? "line-through" : ""}`}
-                        onClick={() => editable && setFocused({ row: ri, col: colName })}
-                        onDoubleClick={() => startEdit({ row: ri, col: colName })}
+                        onClick={() =>
+                          editable && setFocused({ row: ri, col: colName })
+                        }
+                        onDoubleClick={() =>
+                          startEdit({ row: ri, col: colName })
+                        }
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setFocused({ row: ri, col: colName });
-                          setMenu({ x: e.clientX, y: e.clientY, row: ri, col: colName });
+                          setMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            row: ri,
+                            col: colName,
+                          });
                         }}
                       >
                         {isEditing ? (
@@ -293,7 +329,9 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.preventDefault();
-                                commitEdit((e.target as HTMLInputElement).value);
+                                commitEdit(
+                                  (e.target as HTMLInputElement).value,
+                                );
                               } else if (e.key === "Escape") {
                                 e.preventDefault();
                                 setEditing(null);
@@ -324,10 +362,20 @@ export function DataGrid({ connectionId, result, onReload }: Props): JSX.Element
           </span>
           {commitError && <span className="text-danger">{commitError}</span>}
           <div className="ml-auto flex gap-2">
-            <Button variant="ghost" className="py-1" onClick={discard} disabled={committing}>
+            <Button
+              variant="ghost"
+              className="py-1"
+              onClick={discard}
+              disabled={committing}
+            >
               Discard
             </Button>
-            <Button className="py-1" onClick={commit} disabled={committing} title="Cmd/Ctrl+S">
+            <Button
+              className="py-1"
+              onClick={commit}
+              disabled={committing}
+              title="Cmd/Ctrl+S"
+            >
               {committing ? "Committing…" : "Commit"}
             </Button>
           </div>
@@ -367,10 +415,14 @@ function WarningDialog({
         ⚠️ Some rows can't be uniquely identified
       </h2>
       <p className="text-muted mb-3">
-        {warned.length} statement{warned.length !== 1 && "s"} match on all column
-        values and may affect more than one row. Commit anyway?
+        {warned.length} statement{warned.length !== 1 && "s"} match on all
+        column values and may affect more than one row. Commit anyway?
       </p>
-      <Button variant="ghost" className="py-1 mb-2" onClick={() => setShowSql((s) => !s)}>
+      <Button
+        variant="ghost"
+        className="py-1 mb-2"
+        onClick={() => setShowSql((s) => !s)}
+      >
         {showSql ? "Hide SQL" : "View SQL"}
       </Button>
       {showSql && (

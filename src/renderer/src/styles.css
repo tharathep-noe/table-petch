@@ -36,3 +36,12 @@
 .app-no-drag {
   -webkit-app-region: no-drag;
 }
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 300px;
+  height: 6px;
+  background: #ddd;
+  border-radius: 999px;
+  outline: none;
+}

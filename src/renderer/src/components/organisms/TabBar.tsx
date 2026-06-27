@@ -32,7 +32,7 @@ export function TabBar({
         />
       ))}
       <button
-        className="app-no-drag px-2 py-1 text-muted hover:text-text"
+        className="app-no-drag px-2 text-muted hover:text-text"
         onClick={onNew}
         title="New tab"
       >

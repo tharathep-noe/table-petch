@@ -221,6 +221,7 @@ export function App(): JSX.Element {
           connections={connections}
           activeId={activeId}
           schema={schema}
+          currentTable={active.currentTable}
           onNewConnection={() => setModal({ open: true })}
           onConnect={connect}
           onConnectionMenu={(e, conn) => {

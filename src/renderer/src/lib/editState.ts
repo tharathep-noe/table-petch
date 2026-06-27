@@ -1,22 +1,41 @@
-import type { CellValue, Change, ColumnMeta, QueryResult, RowKey } from '@shared/types'
+import type {
+  CellValue,
+  Change,
+  ColumnMeta,
+  QueryResult,
+  RowKey,
+} from "@shared/types";
 
 // Staged edits for one loaded page. Rows are keyed by their index in the page.
-export type Edits = Record<number, Record<string, CellValue>>
+export type Edits = Record<number, Record<string, CellValue>>;
+
+/** Coerce one unique-key entry into a list of column names. The backend may
+ *  send a parsed string[] or a raw Postgres array literal like "{id}". */
+function toColumnNames(entry: unknown): string[] {
+  if (Array.isArray(entry)) return entry as string[];
+  if (typeof entry !== "string") return [];
+  const inner = entry.replace(/^\{/, "").replace(/\}$/, "");
+  return inner === "" ? [] : inner.split(",").map((s) => s.replace(/^"|"$/g, ""));
+}
 
 /** Resolve the displayed value of a cell: staged edit if any, else original. */
 export function cellValue(
   edits: Edits,
   rowIndex: number,
   colName: string,
-  original: CellValue
+  original: CellValue,
 ): CellValue {
-  const rowEdits = edits[rowIndex]
-  if (rowEdits && colName in rowEdits) return rowEdits[colName]
-  return original
+  const rowEdits = edits[rowIndex];
+  if (rowEdits && colName in rowEdits) return rowEdits[colName];
+  return original;
 }
 
-export function isDirty(edits: Edits, rowIndex: number, colName: string): boolean {
-  return !!edits[rowIndex] && colName in edits[rowIndex]
+export function isDirty(
+  edits: Edits,
+  rowIndex: number,
+  colName: string,
+): boolean {
+  return !!edits[rowIndex] && colName in edits[rowIndex];
 }
 
 /** Immutably set/clear a staged edit. Setting a value equal to the original
@@ -26,15 +45,15 @@ export function setEdit(
   rowIndex: number,
   colName: string,
   original: CellValue,
-  value: CellValue
+  value: CellValue,
 ): Edits {
-  const next: Edits = { ...edits }
-  const rowEdits = { ...(next[rowIndex] ?? {}) }
-  if (value === original) delete rowEdits[colName]
-  else rowEdits[colName] = value
-  if (Object.keys(rowEdits).length > 0) next[rowIndex] = rowEdits
-  else delete next[rowIndex]
-  return next
+  const next: Edits = { ...edits };
+  const rowEdits = { ...(next[rowIndex] ?? {}) };
+  if (value === original) delete rowEdits[colName];
+  else rowEdits[colName] = value;
+  if (Object.keys(rowEdits).length > 0) next[rowIndex] = rowEdits;
+  else delete next[rowIndex];
+  return next;
 }
 
 /** Build the WHERE key for a row: primary key → a fully-non-null unique key →
@@ -42,66 +61,72 @@ export function setEdit(
 export function buildRowKey(
   row: CellValue[],
   columns: ColumnMeta[],
-  uniqueKeys: string[][]
+  uniqueKeys: string[][],
 ): RowKey {
-  const indexOf = new Map(columns.map((c, i) => [c.name, i]))
-  const valueOf = (name: string): CellValue => row[indexOf.get(name) ?? -1] ?? null
-  const keyFrom = (names: string[], identity: RowKey['identity']): RowKey => ({
+  const indexOf = new Map(columns.map((c, i) => [c.name, i]));
+  const valueOf = (name: string): CellValue =>
+    row[indexOf.get(name) ?? -1] ?? null;
+  const keyFrom = (names: string[], identity: RowKey["identity"]): RowKey => ({
     where: Object.fromEntries(names.map((n) => [n, valueOf(n)])),
-    identity
-  })
+    identity,
+  });
 
-  const pk = columns.filter((c) => c.isPrimaryKey).map((c) => c.name)
-  if (pk.length > 0) return keyFrom(pk, 'primaryKey')
+  const pk = columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+  if (pk.length > 0) return keyFrom(pk, "primaryKey");
 
-  const usable = uniqueKeys.find((cols) => cols.every((n) => valueOf(n) !== null))
-  if (usable) return keyFrom(usable, 'unique')
+  const usable = uniqueKeys
+    .map(toColumnNames)
+    .find((cols) => cols.length > 0 && cols.every((n) => valueOf(n) !== null));
+  if (usable) return keyFrom(usable, "unique");
 
-  return keyFrom(columns.map((c) => c.name), 'allColumns')
+  return keyFrom(
+    columns.map((c) => c.name),
+    "allColumns",
+  );
 }
 
 /** Turn staged edits + deletions into the Change[] the backend commits. */
 export function buildChanges(
   result: QueryResult,
   edits: Edits,
-  deleted: Set<number>
+  deleted: Set<number>,
 ): Change[] {
-  if (!result.table) return []
-  const table = result.table
-  const uniqueKeys = result.uniqueKeys ?? []
-  const changes: Change[] = []
+  if (!result.table) return [];
+  const table = result.table;
+  const uniqueKeys = result.uniqueKeys ?? [];
+  const changes: Change[] = [];
 
   for (const [key, set] of Object.entries(edits)) {
-    const rowIndex = Number(key)
-    if (deleted.has(rowIndex)) continue // deletion supersedes an edit
-    if (Object.keys(set).length === 0) continue
+    const rowIndex = Number(key);
+    if (deleted.has(rowIndex)) continue; // deletion supersedes an edit
+    if (Object.keys(set).length === 0) continue;
     changes.push({
-      kind: 'update',
+      kind: "update",
       table,
       key: buildRowKey(result.rows[rowIndex], result.columns, uniqueKeys),
-      set
-    })
+      set,
+    });
   }
 
   for (const rowIndex of deleted) {
     changes.push({
-      kind: 'delete',
+      kind: "delete",
       table,
-      key: buildRowKey(result.rows[rowIndex], result.columns, uniqueKeys)
-    })
+      key: buildRowKey(result.rows[rowIndex], result.columns, uniqueKeys),
+    });
   }
 
-  return changes
+  return changes;
 }
 
 export function countChanges(
   result: QueryResult,
   edits: Edits,
-  deleted: Set<number>
+  deleted: Set<number>,
 ): { updates: number; deletes: number; total: number } {
-  let updates = 0
+  let updates = 0;
   for (const [key, set] of Object.entries(edits)) {
-    if (!deleted.has(Number(key)) && Object.keys(set).length > 0) updates++
+    if (!deleted.has(Number(key)) && Object.keys(set).length > 0) updates++;
   }
-  return { updates, deletes: deleted.size, total: updates + deleted.size }
+  return { updates, deletes: deleted.size, total: updates + deleted.size };
 }

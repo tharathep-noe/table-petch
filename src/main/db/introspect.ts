@@ -53,6 +53,41 @@ export interface TableColumns {
   uniqueKeys: string[][];
 }
 
+// The connection pool returns every value as raw text (so the grid renders
+// text), which means catalog booleans arrive as "t"/"f" and array_agg() arrives
+// as a "{a,b}" string. These helpers turn them back into real JS types.
+function toBool(v: unknown): boolean {
+  return v === true || v === "t" || v === "true";
+}
+
+/** Parse a Postgres array literal like {id} or {"a,b",c} into a string[]. */
+function parsePgArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v !== "string") return [];
+  const inner = v.replace(/^\{/, "").replace(/\}$/, "");
+  if (inner === "") return [];
+  const out: string[] = [];
+  let i = 0;
+  while (i < inner.length) {
+    if (inner[i] === '"') {
+      i++;
+      let s = "";
+      while (i < inner.length && inner[i] !== '"') {
+        if (inner[i] === "\\") i++;
+        s += inner[i++];
+      }
+      i++; // closing quote
+      out.push(s);
+    } else {
+      let s = "";
+      while (i < inner.length && inner[i] !== ",") s += inner[i++];
+      out.push(s);
+    }
+    if (inner[i] === ",") i++;
+  }
+  return out;
+}
+
 /** Columns + primary-key + unique-constraint info for one table. */
 export async function getColumns(
   connectionId: string,
@@ -64,8 +99,8 @@ export async function getColumns(
   const columnsP = pool.query<{
     name: string;
     data_type: string;
-    nullable: boolean;
-    is_pk: boolean;
+    nullable: unknown;
+    is_pk: unknown;
   }>(
     `select a.attname as name,
             format_type(a.atttypid, a.atttypmod) as data_type,
@@ -84,7 +119,7 @@ export async function getColumns(
   );
 
   // Every unique index (primary key included), as column-name sets.
-  const uniqueP = pool.query<{ cols: string[] }>(
+  const uniqueP = pool.query<{ cols: unknown }>(
     `select array_agg(a.attname) as cols
        from pg_index i
        join pg_class c on c.oid = i.indrelid
@@ -108,10 +143,10 @@ export async function getColumns(
     cols.push({
       name: r.name,
       dataType: r.data_type,
-      nullable: r.nullable,
-      isPrimaryKey: r.is_pk,
+      nullable: toBool(r.nullable),
+      isPrimaryKey: toBool(r.is_pk),
     });
   }
 
-  return { columns: cols, uniqueKeys: unique.rows.map((r) => r.cols) };
+  return { columns: cols, uniqueKeys: unique.rows.map((r) => parsePgArray(r.cols)) };
 }
