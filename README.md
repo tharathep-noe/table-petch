@@ -37,6 +37,11 @@ extension (recommended in `.vscode/extensions.json`), so every developer writes
 the same style automatically. Run `yarn format:fix` before committing if your
 editor isn't set up.
 
+A **Husky pre-commit hook** (`.husky/pre-commit`) enforces this regardless of
+editor: on every commit it runs **lint-staged** (Prettier over staged files,
+config in `.lintstagedrc`) and then `yarn typecheck`. The hook is installed
+automatically via the `prepare` script on `yarn install`.
+
 ## How the app is structured
 
 This is an Electron app, so there are **three runtime contexts**, and the code is
