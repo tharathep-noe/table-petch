@@ -168,7 +168,9 @@ export function DataGrid({
   function commitEdit(value: CellValue): void {
     if (!editing) return;
     if (editing.isNew) {
-      setNewRows((rows) => setNewRowCell(rows, editing.row, editing.col, value));
+      setNewRows((rows) =>
+        setNewRowCell(rows, editing.row, editing.col, value),
+      );
     } else {
       const original = result.rows[editing.row][colIndex(editing.col)];
       setEdits((e) => setEdit(e, editing.row, editing.col, original, value));
@@ -222,6 +224,7 @@ export function DataGrid({
     setDeleted(new Set());
     setNewRows([]);
     setCommitError(null);
+    setSelected(new Set());
   }
 
   async function doCommit(changes: Change[]): Promise<void> {
@@ -378,7 +381,11 @@ export function DataGrid({
               const isDel = deleted.has(ri);
               const isSel = selected.has(ri);
               return (
-                <tr key={row.id} className={isDel ? "opacity-60" : ""}>
+                <tr
+                  key={row.id}
+                  className={isDel ? "opacity-60" : ""}
+                  onClick={(e) => selectRow(ri, e)}
+                >
                   <td
                     className={`${cellCls} text-muted cursor-pointer select-none ${
                       isSel ? "bg-accent/30" : "bg-panel"
@@ -408,9 +415,10 @@ export function DataGrid({
                     return (
                       <td
                         key={cell.id}
-                        className={`${cellCls} ${dirty ? "bg-accent/20" : ""} ${
-                          isFocused ? "ring-1 ring-accent ring-inset" : ""
-                        } ${isDel ? "line-through" : ""}`}
+                        className={`
+                          ${cellCls} ${dirty ? "bg-accent/20" : ""} 
+                          ${isFocused ? "ring-1 ring-accent ring-inset" : ""} 
+                          ${isDel ? "line-through text-danger" : ""}`}
                         onClick={() =>
                           editable && setFocused({ row: ri, col: colName })
                         }
@@ -493,10 +501,18 @@ export function DataGrid({
                         }`}
                         onClick={() =>
                           !generated &&
-                          setFocused({ row: nr.tempId, col: colName, isNew: true })
+                          setFocused({
+                            row: nr.tempId,
+                            col: colName,
+                            isNew: true,
+                          })
                         }
                         onDoubleClick={() =>
-                          startEdit({ row: nr.tempId, col: colName, isNew: true })
+                          startEdit({
+                            row: nr.tempId,
+                            col: colName,
+                            isNew: true,
+                          })
                         }
                         onContextMenu={(e) => {
                           e.preventDefault();
