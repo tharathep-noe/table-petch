@@ -37,7 +37,9 @@ export async function runQuery(connectionId: string, sql: string): Promise<Query
     name: f.name,
     dataType: String(f.dataTypeID),
     nullable: true,
-    isPrimaryKey: false
+    isPrimaryKey: false,
+    hasDefault: false,
+    isGenerated: false
   }))
 
   return {

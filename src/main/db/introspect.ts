@@ -101,11 +101,15 @@ export async function getColumns(
     data_type: string;
     nullable: unknown;
     is_pk: unknown;
+    has_default: unknown;
+    is_generated: unknown;
   }>(
     `select a.attname as name,
             format_type(a.atttypid, a.atttypmod) as data_type,
             not a.attnotnull as nullable,
-            coalesce(bool_or(i.indisprimary), false) as is_pk
+            coalesce(bool_or(i.indisprimary), false) as is_pk,
+            a.atthasdef as has_default,
+            (a.attgenerated <> '' or a.attidentity = 'a') as is_generated
        from pg_attribute a
        join pg_class c on c.oid = a.attrelid
        join pg_namespace n on n.oid = c.relnamespace
@@ -113,7 +117,8 @@ export async function getColumns(
          on i.indrelid = a.attrelid and i.indisprimary and a.attnum = any(i.indkey)
       where n.nspname = $1 and c.relname = $2
         and a.attnum > 0 and not a.attisdropped
-      group by a.attname, a.atttypid, a.atttypmod, a.attnotnull, a.attnum
+      group by a.attname, a.atttypid, a.atttypmod, a.attnotnull, a.attnum,
+               a.atthasdef, a.attgenerated, a.attidentity
       order by a.attnum`,
     [table.schema, table.name],
   );
@@ -145,6 +150,8 @@ export async function getColumns(
       dataType: r.data_type,
       nullable: toBool(r.nullable),
       isPrimaryKey: toBool(r.is_pk),
+      hasDefault: toBool(r.has_default),
+      isGenerated: toBool(r.is_generated),
     });
   }
 

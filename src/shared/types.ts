@@ -21,6 +21,10 @@ export interface ColumnMeta {
   dataType: string; // postgres type name, e.g. "int4", "jsonb", "timestamptz"
   nullable: boolean;
   isPrimaryKey: boolean;
+  /** Column has a DEFAULT (or identity sequence) — may be omitted on INSERT. */
+  hasDefault: boolean;
+  /** GENERATED ALWAYS (stored generated, or identity always) — never insertable. */
+  isGenerated: boolean;
 }
 
 export interface TableRef {

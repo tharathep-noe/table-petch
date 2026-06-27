@@ -16,8 +16,14 @@ import {
   cellValue,
   countChanges,
   type Edits,
+  invalidNewRows,
+  isCellSet,
   isDirty,
+  type NewRow,
+  requiredColumns,
   setEdit,
+  setNewRowCell,
+  unsetNewRowCell,
 } from "../../lib/editState";
 import { Button } from "../atoms/Button";
 import { Menu, type MenuItemDef } from "../molecules/Menu";
@@ -31,8 +37,9 @@ interface Props {
 
 type Row = CellValue[];
 interface CellPos {
-  row: number;
+  row: number; // existing: page index; new: tempId
   col: string;
+  isNew?: boolean;
 }
 interface CellMenu extends CellPos {
   x: number;
@@ -70,9 +77,14 @@ export function DataGrid({
     () => new Map(result.columns.map((c) => [c.name, c])),
     [result.columns],
   );
+  const requiredNames = useMemo(
+    () => new Set(requiredColumns(result.columns).map((c) => c.name)),
+    [result.columns],
+  );
 
   const [edits, setEdits] = useState<Edits>({});
   const [deleted, setDeleted] = useState<Set<number>>(new Set());
+  const [newRows, setNewRows] = useState<NewRow[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [focused, setFocused] = useState<CellPos | null>(null);
   const [editing, setEditing] = useState<CellPos | null>(null);
@@ -85,6 +97,7 @@ export function DataGrid({
     statements: PreparedStatement[];
   } | null>(null);
   const anchorRef = useRef<number | null>(null);
+  const tempIdRef = useRef(-1);
   // Lets the global keydown listener call the latest commit() closure.
   const commitRef = useRef<() => void>(() => {});
 
@@ -92,6 +105,7 @@ export function DataGrid({
   useEffect(() => {
     setEdits({});
     setDeleted(new Set());
+    setNewRows([]);
     setSelected(new Set());
     setFocused(null);
     setEditing(null);
@@ -117,29 +131,65 @@ export function DataGrid({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const counts = countChanges(result, edits, deleted);
+  const counts = countChanges(result, edits, deleted, newRows);
+  const invalidRows = useMemo(
+    () => invalidNewRows(result.columns, newRows),
+    [result.columns, newRows],
+  );
   const colIndex = (name: string): number =>
     result.columns.findIndex((c) => c.name === name);
+  const newRowOf = (tempId: number): NewRow | undefined =>
+    newRows.find((r) => r.tempId === tempId);
+
+  function addRow(): void {
+    const tempId = tempIdRef.current--;
+    setNewRows((rows) => [...rows, { tempId, values: {} }]);
+  }
+
+  function removeNewRow(tempId: number): void {
+    setNewRows((rows) => rows.filter((r) => r.tempId !== tempId));
+    setMenu(null);
+  }
 
   function startEdit(pos: CellPos): void {
     if (!editable) return;
-    const original = result.rows[pos.row][colIndex(pos.col)];
+    if (pos.isNew && colMeta.get(pos.col)?.isGenerated) return; // not insertable
+    let current: CellValue;
+    if (pos.isNew) {
+      const row = newRowOf(pos.row);
+      current = row && isCellSet(row, pos.col) ? row.values[pos.col] : null;
+    } else {
+      current = result.rows[pos.row][colIndex(pos.col)];
+    }
     setEditing(pos);
-    setDraft(original === null ? "" : String(original));
+    setDraft(current === null ? "" : String(current));
   }
 
   function commitEdit(value: CellValue): void {
     if (!editing) return;
-    const original = result.rows[editing.row][colIndex(editing.col)];
-    setEdits((e) => setEdit(e, editing.row, editing.col, original, value));
+    if (editing.isNew) {
+      setNewRows((rows) => setNewRowCell(rows, editing.row, editing.col, value));
+    } else {
+      const original = result.rows[editing.row][colIndex(editing.col)];
+      setEdits((e) => setEdit(e, editing.row, editing.col, original, value));
+    }
     setEditing(null);
   }
 
   function setNull(pos: CellPos): void {
     const meta = colMeta.get(pos.col);
     if (!meta?.nullable) return;
-    const original = result.rows[pos.row][colIndex(pos.col)];
-    setEdits((e) => setEdit(e, pos.row, pos.col, original, null));
+    if (pos.isNew) {
+      setNewRows((rows) => setNewRowCell(rows, pos.row, pos.col, null));
+    } else {
+      const original = result.rows[pos.row][colIndex(pos.col)];
+      setEdits((e) => setEdit(e, pos.row, pos.col, original, null));
+    }
+    setMenu(null);
+  }
+
+  function setDefault(pos: CellPos): void {
+    setNewRows((rows) => unsetNewRowCell(rows, pos.row, pos.col));
     setMenu(null);
   }
 
@@ -170,6 +220,7 @@ export function DataGrid({
   function discard(): void {
     setEdits({});
     setDeleted(new Set());
+    setNewRows([]);
     setCommitError(null);
   }
 
@@ -187,8 +238,15 @@ export function DataGrid({
   }
 
   async function commit(): Promise<void> {
-    const changes = buildChanges(result, edits, deleted);
+    const changes = buildChanges(result, edits, deleted, newRows);
     if (changes.length === 0) return;
+    if (invalidRows.size > 0) {
+      setCommitError(
+        `${invalidRows.size} new row${invalidRows.size !== 1 ? "s are" : " is"} ` +
+          `missing a required value.`,
+      );
+      return;
+    }
     const hasWarn = changes.some(
       (c) => "key" in c && c.key.identity === "allColumns",
     );
@@ -221,6 +279,26 @@ export function DataGrid({
 
   const menuItems = (m: CellMenu): MenuItemDef[] => {
     const items: MenuItemDef[] = [];
+    if (m.isNew) {
+      if (m.col && colMeta.get(m.col)?.nullable) {
+        items.push({
+          label: "Set NULL",
+          onClick: () => setNull({ row: m.row, col: m.col, isNew: true }),
+        });
+      }
+      if (m.col && !colMeta.get(m.col)?.isGenerated) {
+        items.push({
+          label: "Set DEFAULT",
+          onClick: () => setDefault({ row: m.row, col: m.col, isNew: true }),
+        });
+      }
+      items.push({
+        label: "Remove new row",
+        danger: true,
+        onClick: () => removeNewRow(m.row),
+      });
+      return items;
+    }
     if (m.col && colMeta.get(m.col)?.nullable) {
       items.push({
         label: "Set NULL",
@@ -237,6 +315,26 @@ export function DataGrid({
     });
     return items;
   };
+
+  function renderEditInput(): JSX.Element {
+    return (
+      <input
+        autoFocus
+        className="w-full bg-bg text-text border border-accent rounded px-1 outline-none"
+        defaultValue={draft}
+        onBlur={(e) => commitEdit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitEdit((e.target as HTMLInputElement).value);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(null);
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -263,6 +361,12 @@ export function DataGrid({
                   >
                     {meta?.isPrimaryKey ? "🔑 " : ""}
                     {h.column.id}
+                    {requiredNames.has(h.column.id) ? (
+                      <span className="text-danger" title="Required on insert">
+                        {" "}
+                        *
+                      </span>
+                    ) : null}
                   </th>
                 );
               })}
@@ -294,9 +398,13 @@ export function DataGrid({
                     const val = cellValue(edits, ri, colName, original);
                     const dirty = isDirty(edits, ri, colName);
                     const isEditing =
-                      editing?.row === ri && editing?.col === colName;
+                      editing?.row === ri &&
+                      editing?.col === colName &&
+                      !editing?.isNew;
                     const isFocused =
-                      focused?.row === ri && focused?.col === colName;
+                      focused?.row === ri &&
+                      focused?.col === colName &&
+                      !focused?.isNew;
                     return (
                       <td
                         key={cell.id}
@@ -321,23 +429,7 @@ export function DataGrid({
                         }}
                       >
                         {isEditing ? (
-                          <input
-                            autoFocus
-                            className="w-full bg-bg text-text border border-accent rounded px-1 outline-none"
-                            defaultValue={draft}
-                            onBlur={(e) => commitEdit(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                commitEdit(
-                                  (e.target as HTMLInputElement).value,
-                                );
-                              } else if (e.key === "Escape") {
-                                e.preventDefault();
-                                setEditing(null);
-                              }
-                            }}
-                          />
+                          renderEditInput()
                         ) : val === null ? (
                           <span className="text-null italic">NULL</span>
                         ) : (
@@ -349,36 +441,133 @@ export function DataGrid({
                 </tr>
               );
             })}
+
+            {newRows.map((nr) => {
+              const invalid = invalidRows.has(nr.tempId);
+              return (
+                <tr
+                  key={`new-${nr.tempId}`}
+                  className="bg-success/5 border-l-2 border-l-success"
+                >
+                  <td
+                    className={`${cellCls} text-success select-none cursor-pointer`}
+                    title="New row — right-click to remove"
+                    onClick={() => removeNewRow(nr.tempId)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        row: nr.tempId,
+                        col: "",
+                        isNew: true,
+                      });
+                    }}
+                  >
+                    ＋
+                  </td>
+                  {result.columns.map((c) => {
+                    const colName = c.name;
+                    const set = isCellSet(nr, colName);
+                    const value = set ? nr.values[colName] : null;
+                    const generated = c.isGenerated;
+                    const missing =
+                      invalid &&
+                      requiredNames.has(colName) &&
+                      (!set || value === null);
+                    const isEditing =
+                      editing?.isNew &&
+                      editing.row === nr.tempId &&
+                      editing.col === colName;
+                    const isFocused =
+                      focused?.isNew &&
+                      focused.row === nr.tempId &&
+                      focused.col === colName;
+                    return (
+                      <td
+                        key={colName}
+                        className={`${cellCls} ${
+                          isFocused ? "ring-1 ring-accent ring-inset" : ""
+                        } ${missing ? "ring-1 ring-danger ring-inset" : ""} ${
+                          generated ? "text-muted" : ""
+                        }`}
+                        onClick={() =>
+                          !generated &&
+                          setFocused({ row: nr.tempId, col: colName, isNew: true })
+                        }
+                        onDoubleClick={() =>
+                          startEdit({ row: nr.tempId, col: colName, isNew: true })
+                        }
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          if (!generated)
+                            setFocused({
+                              row: nr.tempId,
+                              col: colName,
+                              isNew: true,
+                            });
+                          setMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            row: nr.tempId,
+                            col: colName,
+                            isNew: true,
+                          });
+                        }}
+                      >
+                        {isEditing ? (
+                          renderEditInput()
+                        ) : !set ? (
+                          <span className="text-muted italic">DEFAULT</span>
+                        ) : value === null ? (
+                          <span className="text-null italic">NULL</span>
+                        ) : (
+                          value
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {counts.total > 0 && (
+      {editable && (
         <div className="flex items-center gap-3 px-3 py-2 border-t border-border bg-panel">
-          <span className="text-muted">
-            {counts.total} pending: {counts.updates} update
-            {counts.updates !== 1 && "s"}, {counts.deletes} delete
-            {counts.deletes !== 1 && "s"}
-          </span>
+          <Button variant="ghost" className="py-1" onClick={addRow}>
+            ＋ Add row
+          </Button>
+          {counts.total > 0 && (
+            <span className="text-muted">
+              {counts.total} pending: {counts.updates} update
+              {counts.updates !== 1 && "s"}, {counts.inserts} insert
+              {counts.inserts !== 1 && "s"}, {counts.deletes} delete
+              {counts.deletes !== 1 && "s"}
+            </span>
+          )}
           {commitError && <span className="text-danger">{commitError}</span>}
-          <div className="ml-auto flex gap-2">
-            <Button
-              variant="ghost"
-              className="py-1"
-              onClick={discard}
-              disabled={committing}
-            >
-              Discard
-            </Button>
-            <Button
-              className="py-1"
-              onClick={commit}
-              disabled={committing}
-              title="Cmd/Ctrl+S"
-            >
-              {committing ? "Committing…" : "Commit"}
-            </Button>
-          </div>
+          {counts.total > 0 && (
+            <div className="ml-auto flex gap-2">
+              <Button
+                variant="ghost"
+                className="py-1"
+                onClick={discard}
+                disabled={committing}
+              >
+                Discard
+              </Button>
+              <Button
+                className="py-1"
+                onClick={commit}
+                disabled={committing}
+                title="Cmd/Ctrl+S"
+              >
+                {committing ? "Committing…" : "Commit"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

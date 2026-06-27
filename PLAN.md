@@ -42,6 +42,11 @@ data, plus a SQL editor.
 - Row identity for `WHERE`: **primary key → unique constraint → all-column match**.
 - If no unique identity can be guaranteed, the statement still runs, but a
   **non-blocking warning** is shown in the commit preview (user owns the risk).
+- **New rows** are staged in the grid with a three-state cell model: *unset*
+  (omitted from the `INSERT` so Postgres applies the column DEFAULT/identity),
+  an explicit value, or explicit NULL. Generated/identity-always columns are
+  never insertable; NOT-NULL columns without a default are **required** and
+  block commit until provided.
 
 ### Type handling
 - Render/edit values as their **Postgres text representation**.
@@ -62,8 +67,6 @@ data, plus a SQL editor.
 - Materialized views, functions, sequences, types, indexes in the tree
 - Rich per-type editors (date pickers, JSON tree editor, array chips)
 - Keyset pagination
-- **INSERT (new-row) UX** — blank row, default values, required-field validation
-  (the write engine in `commit.ts` already supports `InsertChange`)
 - **Grid virtualization** (`@tanstack/react-virtual`) — add when result sets
   exceed the 500-row page cap; the grid is on TanStack Table already
 - **Sorting / column resize** in the grid
@@ -81,8 +84,10 @@ data, plus a SQL editor.
 5. SQL editor + `runQuery`. ✅ (CodeMirror, runs selection-or-all via ⌘↵;
    results shown read-only. Refinement TODO: run *statement under cursor*,
    and make simple single-table SELECT results editable.)
-6. Staged edit model + `commitChanges` (UPDATE + DELETE). ✅
-   (INSERT deferred — see Deferred list.)
+6. Staged edit model + `commitChanges` (UPDATE + DELETE + INSERT). ✅
+   New rows are added in the grid; each cell is *unset* (DB DEFAULT), an explicit
+   value, or explicit NULL. Required columns (NOT NULL, no default, not generated)
+   are marked `*` and block commit until provided.
 7. Type handling polish (NULL ✅; expander modal still TODO).
 8. Database switcher in the sidebar. ✅
 
