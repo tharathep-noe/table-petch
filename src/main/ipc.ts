@@ -5,9 +5,12 @@ import type {
   ConnectionInput,
   LoadRowsRequest,
   PersistedSession,
+  SavedQueryInput,
 } from '@shared/types';
 import * as store from './store';
 import * as session from './sessionStore';
+import * as history from './historyStore';
+import * as savedQueries from './savedQueryStore';
 import * as mgr from './db/manager';
 import { listSchema } from './db/introspect';
 import { loadRows, runQuery } from './db/query';
@@ -48,5 +51,17 @@ export function registerIpc(): void {
   ipcMain.handle(CH.loadSession, () => session.loadSession());
   ipcMain.handle(CH.saveSession, (_e, s: PersistedSession) =>
     session.saveSession(s),
+  );
+
+  ipcMain.handle(CH.listHistory, (_e, id: string) => history.list(id));
+  ipcMain.handle(CH.clearHistory, (_e, id: string) => history.clear(id));
+  ipcMain.handle(CH.clearAllHistory, () => history.clearAll());
+
+  ipcMain.handle(CH.listSavedQueries, () => savedQueries.list());
+  ipcMain.handle(CH.saveQuery, (_e, input: SavedQueryInput) =>
+    savedQueries.saveQuery(input),
+  );
+  ipcMain.handle(CH.deleteSavedQuery, (_e, id: string) =>
+    savedQueries.deleteQuery(id),
   );
 }

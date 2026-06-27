@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import type { ConnectionConfig, ConnectionInput } from '@shared/types';
+import * as history from './historyStore';
 
 // Connection metadata lives in a JSON file under userData.
 // Passwords are encrypted with the OS keychain (safeStorage) and kept in a
@@ -73,6 +74,8 @@ export function deleteConnection(id: string): void {
   data.connections = data.connections.filter((c) => c.id !== id);
   delete data.secrets[id];
   save(data);
+  // Don't leave privacy-sensitive history behind for a connection that's gone.
+  history.clear(id);
 }
 
 export function getPassword(id: string): string | undefined {

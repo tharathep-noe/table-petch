@@ -15,6 +15,8 @@ interface Props {
   schema?: Record<string, string[]>;
   onResult: (result: QueryResult) => void;
   onError: (message: string) => void;
+  /** Save the current editor text to the query library (prompts for a name). */
+  onSaveQuery: (sql: string) => void;
 }
 
 export function SqlEditor({
@@ -24,6 +26,7 @@ export function SqlEditor({
   schema,
   onResult,
   onError,
+  onSaveQuery,
 }: Props): JSX.Element {
   const [running, setRunning] = useState(false);
   const cmRef = useRef<ReactCodeMirrorRef>(null);
@@ -92,6 +95,15 @@ export function SqlEditor({
           title="Run (Cmd/Ctrl+Enter) — runs the selection, or the whole editor"
         >
           {running ? 'Running…' : '▶ Run'}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => onSaveQuery(value)}
+          disabled={!value.trim()}
+          className="px-3 py-1"
+          title="Save this query to the library"
+        >
+          ★ Save
         </Button>
         <span className="text-muted text-xs">⌘↵ runs selection or all</span>
       </div>

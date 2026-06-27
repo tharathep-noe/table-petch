@@ -75,6 +75,11 @@ export async function disconnect(connectionId: string): Promise<void> {
   }
 }
 
+/** The database a connection is currently pooled against (for history entries). */
+export function getDatabase(connectionId: string): string {
+  return lastDatabase.get(connectionId) ?? '';
+}
+
 export function getPool(connectionId: string): pg.Pool {
   const pool = pools.get(connectionId);
   if (!pool) throw new Error('Not connected. Open the connection first.');

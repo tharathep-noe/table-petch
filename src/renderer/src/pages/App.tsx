@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ConnectionConfig,
+  HistoryEntry,
   PersistedSession,
   QueryResult,
+  SavedQuery,
   SchemaInfo,
   TableRef,
 } from '@shared/types';
 import { AppLayout } from '../components/templates/AppLayout';
-import { Sidebar } from '../components/organisms/Sidebar';
+import { Sidebar, type SidebarView } from '../components/organisms/Sidebar';
 import { TabBar } from '../components/organisms/TabBar';
 import { Toolbar } from '../components/organisms/Toolbar';
 import { SqlEditor } from '../components/organisms/SqlEditor';
 import { DataGrid } from '../components/organisms/DataGrid';
 import { ConnectionModal } from '../components/organisms/ConnectionModal';
 import { Menu } from '../components/molecules/Menu';
+import { Modal } from '../components/molecules/Modal';
+import { Button } from '../components/atoms/Button';
 import { Input } from '../components/atoms/Input';
 
 interface ModalState {
@@ -62,6 +66,14 @@ export function App(): JSX.Element {
   const [filterShown, setFilterShown] = useState(false);
   const [filterText, setFilterText] = useState('');
 
+  // Saved-query library (global) and the active connection's history.
+  const [sidebarView, setSidebarView] = useState<SidebarView>('database');
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
+  const [queryHistory, setQueryHistory] = useState<HistoryEntry[]>([]);
+  // Naming dialog for "Save query"; holds the SQL being saved.
+  const [saveModal, setSaveModal] = useState<{ sql: string } | null>(null);
+  const [saveName, setSaveName] = useState('');
+
   const initialTab = useMemo(makeTab, []);
   const [tabs, setTabs] = useState<Tab[]>([initialTab]);
   const [activeTabId, setActiveTabId] = useState(initialTab.id);
@@ -106,9 +118,23 @@ export function App(): JSX.Element {
     return list;
   }
 
+  async function refreshSavedQueries(): Promise<void> {
+    setSavedQueries(await window.api.listSavedQueries());
+  }
+
+  async function refreshHistory(connId: string | null): Promise<void> {
+    setQueryHistory(connId ? await window.api.listHistory(connId) : []);
+  }
+
   useEffect(() => {
     refreshConnections();
+    refreshSavedQueries();
   }, []);
+
+  // History is scoped to the active connection; refetch when it changes.
+  useEffect(() => {
+    void refreshHistory(activeId);
+  }, [activeId]);
 
   // Restore the last session on launch (ADR 0002): rebuild tabs, best-effort
   // auto-reconnect, then auto-load table tabs only — never auto-run SQL tabs.
@@ -300,6 +326,48 @@ export function App(): JSX.Element {
     if (id === activeTabId) setActiveTabId(next[Math.max(0, idx - 1)].id);
   }
 
+  // Open a saved query or history entry in a fresh, un-run SQL tab.
+  function openSql(sql: string): void {
+    const t: Tab = {
+      ...makeTab(),
+      title: 'Query',
+      sqlText: sql,
+      showSql: true,
+    };
+    setTabs((ts) => [...ts, t]);
+    setActiveTabId(t.id);
+  }
+
+  async function submitSaveQuery(): Promise<void> {
+    if (!saveModal || !saveName.trim()) return;
+    await window.api.saveQuery({
+      name: saveName.trim(),
+      sql: saveModal.sql,
+      connectionId: activeId,
+    });
+    setSaveModal(null);
+    setSaveName('');
+    await refreshSavedQueries();
+  }
+
+  async function deleteSavedQuery(q: SavedQuery): Promise<void> {
+    const ok = window.confirm(`Delete saved query "${q.name}"?`);
+    if (!ok) return;
+    await window.api.deleteSavedQuery(q.id);
+    await refreshSavedQueries();
+  }
+
+  async function clearHistory(): Promise<void> {
+    if (!activeId) return;
+    await window.api.clearHistory(activeId);
+    await refreshHistory(activeId);
+  }
+
+  async function clearAllHistory(): Promise<void> {
+    await window.api.clearAllHistory();
+    await refreshHistory(activeId);
+  }
+
   async function handleSaved(
     saved: ConnectionConfig,
     changedTarget: boolean,
@@ -331,6 +399,8 @@ export function App(): JSX.Element {
     <AppLayout
       sidebar={
         <Sidebar
+          view={sidebarView}
+          onChangeView={setSidebarView}
           connections={connections}
           activeId={activeId}
           schema={schema}
@@ -343,6 +413,16 @@ export function App(): JSX.Element {
           }}
           onSwitchDatabase={switchDatabase}
           onOpenTable={openTable}
+          savedQueries={savedQueries}
+          queryHistory={queryHistory}
+          onOpenSql={openSql}
+          onDeleteSavedQuery={deleteSavedQuery}
+          onSaveToLibrary={(sql) => {
+            setSaveName('');
+            setSaveModal({ sql });
+          }}
+          onClearHistory={clearHistory}
+          onClearAllHistory={clearAllHistory}
         />
       }
     >
@@ -379,10 +459,22 @@ export function App(): JSX.Element {
           value={active.sqlText}
           onChange={(v) => updateTab(active.id, { sqlText: v })}
           schema={sqlSchema}
-          onResult={(r) =>
-            updateTab(active.id, { result: r, currentTable: null, error: null })
-          }
-          onError={(m) => updateTab(active.id, { error: m })}
+          onResult={(r) => {
+            updateTab(active.id, {
+              result: r,
+              currentTable: null,
+              error: null,
+            });
+            void refreshHistory(activeId);
+          }}
+          onError={(m) => {
+            updateTab(active.id, { error: m });
+            void refreshHistory(activeId);
+          }}
+          onSaveQuery={(sql) => {
+            setSaveName('');
+            setSaveModal({ sql });
+          }}
         />
       )}
 
@@ -430,6 +522,40 @@ export function App(): JSX.Element {
           onClose={() => setModal({ open: false })}
           onSaved={handleSaved}
         />
+      )}
+
+      {saveModal && (
+        <Modal onClose={() => setSaveModal(null)}>
+          <h2 className="text-sm font-semibold mb-3">Save query</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitSaveQuery();
+            }}
+          >
+            <Input
+              autoFocus
+              placeholder="Query name"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+            />
+            <pre className="mt-3 max-h-32 overflow-auto rounded bg-bg p-2 text-xs text-muted whitespace-pre-wrap">
+              {saveModal.sql}
+            </pre>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setSaveModal(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!saveName.trim()}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </AppLayout>
   );

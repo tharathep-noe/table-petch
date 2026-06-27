@@ -5,6 +5,7 @@ import type {
   ConnectionInput,
   LoadRowsRequest,
   PersistedSession,
+  SavedQueryInput,
   TablePetchApi,
 } from '@shared/types';
 
@@ -35,6 +36,15 @@ const api: TablePetchApi = {
   loadSession: () => ipcRenderer.invoke(CH.loadSession),
   saveSession: (session: PersistedSession) =>
     ipcRenderer.invoke(CH.saveSession, session),
+
+  listHistory: (id: string) => ipcRenderer.invoke(CH.listHistory, id),
+  clearHistory: (id: string) => ipcRenderer.invoke(CH.clearHistory, id),
+  clearAllHistory: () => ipcRenderer.invoke(CH.clearAllHistory),
+
+  listSavedQueries: () => ipcRenderer.invoke(CH.listSavedQueries),
+  saveQuery: (input: SavedQueryInput) =>
+    ipcRenderer.invoke(CH.saveQuery, input),
+  deleteSavedQuery: (id: string) => ipcRenderer.invoke(CH.deleteSavedQuery, id),
 };
 
 contextBridge.exposeInMainWorld('api', api);

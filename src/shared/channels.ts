@@ -14,6 +14,12 @@ export const CH = {
   commitChanges: 'db:commit',
   loadSession: 'session:load',
   saveSession: 'session:save',
+  listHistory: 'history:list',
+  clearHistory: 'history:clear',
+  clearAllHistory: 'history:clearAll',
+  listSavedQueries: 'savedQuery:list',
+  saveQuery: 'savedQuery:save',
+  deleteSavedQuery: 'savedQuery:delete',
 } as const;
 
 export type Channel = (typeof CH)[keyof typeof CH];

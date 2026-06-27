@@ -129,6 +129,50 @@ export interface PersistedSession {
   tabs: PersistedTab[];
 }
 
+// ---- Query history (automatic, per-connection run log) ----
+
+/** One logged execution. Only user-authored editor runs are logged today;
+ *  `source` reserves room to log synthesized commit statements later. */
+export interface HistoryEntry {
+  id: string;
+  /** 'query' = user-authored editor run (the only value emitted now).
+   *  'commit' is reserved for synthesized staged-change statements. */
+  source: 'query' | 'commit';
+  connectionId: string;
+  database: string;
+  sql: string;
+  /** pg command tag of the statement (e.g. "SELECT", "UPDATE"); null on error.
+   *  For multi-statement scripts this is the most significant tag (a write wins
+   *  over a read) so read/write collapsing classifies correctly. */
+  command: string | null;
+  executedAt: number; // epoch ms
+  ok: boolean;
+  rowCount: number | null;
+  durationMs: number | null;
+  error: string | null;
+}
+
+// ---- Saved queries (curated, global library) ----
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  sql: string;
+  /** Connection it was saved from, if any. The library is global; this is only
+   *  an optional tag for later filtering. */
+  connectionId: string | null;
+  createdAt: number; // epoch ms
+  updatedAt: number; // epoch ms
+}
+
+export interface SavedQueryInput {
+  /** Omitted for a new query; present to update an existing one. */
+  id?: string;
+  name: string;
+  sql: string;
+  connectionId: string | null;
+}
+
 // ---- The RPC surface exposed on window.api ----
 
 export interface TablePetchApi {
@@ -155,4 +199,14 @@ export interface TablePetchApi {
 
   loadSession(): Promise<PersistedSession | null>;
   saveSession(session: PersistedSession): Promise<void>;
+
+  /** Query history, scoped per connection and returned newest-first. */
+  listHistory(connectionId: string): Promise<HistoryEntry[]>;
+  clearHistory(connectionId: string): Promise<void>;
+  clearAllHistory(): Promise<void>;
+
+  /** Saved-query library (global). */
+  listSavedQueries(): Promise<SavedQuery[]>;
+  saveQuery(input: SavedQueryInput): Promise<SavedQuery>;
+  deleteSavedQuery(id: string): Promise<void>;
 }
