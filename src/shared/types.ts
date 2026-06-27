@@ -114,6 +114,7 @@ export interface CommitResult {
 export interface PersistedTab {
   id: string;
   title: string;
+  tabCode: string;
   sqlText: string;
   showSql: boolean;
   currentTable: TableRef | null;

@@ -31,6 +31,7 @@ interface ConnMenuState {
 // both. Connection/schema stay global (shared across tabs).
 interface Tab {
   id: string;
+  tabCode: string;
   title: string;
   sqlText: string;
   showSql: boolean;
@@ -43,6 +44,7 @@ function makeTab(): Tab {
   return {
     id: crypto.randomUUID(),
     title: 'Query',
+    tabCode: 'query',
     sqlText: 'select * from ',
     showSql: false,
     result: null,
@@ -121,6 +123,7 @@ export function App(): JSX.Element {
         const restored: Tab[] = saved.tabs.map((t) => ({
           id: t.id,
           title: t.title,
+          tabCode: t.tabCode,
           sqlText: t.sqlText,
           showSql: t.showSql,
           currentTable: t.currentTable,
@@ -163,6 +166,7 @@ export function App(): JSX.Element {
         tabs: tabs.map((t) => ({
           id: t.id,
           title: t.title,
+          tabCode: t.tabCode,
           sqlText: t.sqlText,
           showSql: t.showSql,
           currentTable: t.currentTable,
@@ -236,12 +240,27 @@ export function App(): JSX.Element {
 
   function openTable(table: TableRef): void {
     if (!activeId) return;
+    // One tab per table: focus the existing tab if we already opened this one.
+    const tabCode = `${table.schema}.${table.name}`.toLowerCase();
+    const existingTab = tabs.find((tab) => tab.tabCode === tabCode);
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      return;
+    }
+
     // Show the table's data, and mirror the equivalent SELECT into the editor.
     const ident = (s: string): string => `"${s.replace(/"/g, '""')}"`;
-    updateTab(activeTabId, {
-      sqlText: `select * from ${ident(table.schema)}.${ident(table.name)} limit 100`,
-    });
-    loadTable(activeTabId, activeId, table);
+    const query = `select * from ${ident(table.schema)}.${ident(table.name)} limit 100`;
+    const t: Tab = {
+      ...makeTab(),
+      tabCode,
+      title: table.name,
+      sqlText: query,
+      showSql: true,
+    };
+    setTabs((ts) => [...ts, t]);
+    setActiveTabId(t.id);
+    loadTable(t.id, activeId, table);
   }
 
   function reload(): void {
