@@ -225,4 +225,11 @@ export interface TablePetchApi {
   listSavedQueries(): Promise<SavedQuery[]>;
   saveQuery(input: SavedQueryInput): Promise<SavedQuery>;
   deleteSavedQuery(id: string): Promise<void>;
+
+  /**
+   * Subscribe to the application menu's tab commands (ADR 0005). Each returns an
+   * unsubscribe function. `Cmd+T` → onMenuNewTab, `Cmd+W` → onMenuCloseTab.
+   */
+  onMenuNewTab(cb: () => void): () => void;
+  onMenuCloseTab(cb: () => void): () => void;
 }

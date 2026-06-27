@@ -47,6 +47,17 @@ const api: TablePetchApi = {
   saveQuery: (input: SavedQueryInput) =>
     ipcRenderer.invoke(CH.saveQuery, input),
   deleteSavedQuery: (id: string) => ipcRenderer.invoke(CH.deleteSavedQuery, id),
+
+  onMenuNewTab: (cb: () => void) => {
+    const listener = (): void => cb();
+    ipcRenderer.on(CH.menuNewTab, listener);
+    return () => ipcRenderer.removeListener(CH.menuNewTab, listener);
+  },
+  onMenuCloseTab: (cb: () => void) => {
+    const listener = (): void => cb();
+    ipcRenderer.on(CH.menuCloseTab, listener);
+    return () => ipcRenderer.removeListener(CH.menuCloseTab, listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

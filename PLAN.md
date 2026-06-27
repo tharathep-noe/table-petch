@@ -240,6 +240,22 @@ Decisions fixed during design:
    routine name. A dropped routine (fetch fails) surfaces a per-tab error, same as
    a dropped-table restore.
 
+## Tab keyboard shortcuts — build steps ✅
+
+`Cmd+T` opens a new [[tab]]; `Cmd+W` closes the current one. Driven by a custom
+application menu in the main process, not a renderer keydown, because macOS binds
+`Cmd+W` to the native close-window role that a keydown can't intercept. See ADR 0005.
+
+1. **Channels** — add one-way `menuNewTab` / `menuCloseTab` (main → renderer) to
+   `src/shared/channels.ts`; add `onMenuNewTab` / `onMenuCloseTab` (each returns an
+   unsubscribe) to `TablePetchApi`. ✅
+2. **App menu** — `src/main/menu.ts`: a custom `Menu` (re-declaring the standard
+   roles) with `New Tab` (CmdOrCtrl+T) / `Close Tab` (CmdOrCtrl+W) items that
+   `webContents.send` the intents; installed per-window in `index.ts`. ✅
+3. **Preload** — bridge the two `on…` subscriptions over `ipcRenderer.on`. ✅
+4. **Renderer** — `App.tsx` subscribes: new-tab → `newTab()`; close-tab →
+   `closeTab(active)` when >1 tab, else `window.close()`. ✅
+
 ## Suggested build order
 
 1. Project boots (Electron + React window). ✅ scaffolded

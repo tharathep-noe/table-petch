@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'path';
 import { registerIpc } from './ipc';
+import { installAppMenu } from './menu';
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -17,6 +18,8 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+
+  installAppMenu(win);
 
   win.on('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(({ url }) => {

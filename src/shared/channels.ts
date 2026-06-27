@@ -21,6 +21,9 @@ export const CH = {
   listSavedQueries: 'savedQuery:list',
   saveQuery: 'savedQuery:save',
   deleteSavedQuery: 'savedQuery:delete',
+  // One-way pushes from the application menu (main → renderer). See ADR 0005.
+  menuNewTab: 'menu:newTab',
+  menuCloseTab: 'menu:closeTab',
 } as const;
 
 export type Channel = (typeof CH)[keyof typeof CH];

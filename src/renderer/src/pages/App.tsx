@@ -222,6 +222,22 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Tab shortcuts from the application menu (ADR 0005). Cmd+W closes the active
+  // tab, except on the last tab where it closes the window (the tab-bar × button
+  // instead resets to a blank tab — a deliberate divergence). Re-subscribe when
+  // tab state changes so the handlers close over the current tabs/active id.
+  useEffect(() => {
+    const offNew = window.api.onMenuNewTab(() => newTab());
+    const offClose = window.api.onMenuCloseTab(() => {
+      if (tabs.length > 1) closeTab(activeTabId);
+      else window.close();
+    });
+    return () => {
+      offNew();
+      offClose();
+    };
+  }, [tabs, activeTabId]);
+
   // Dismiss the connection context menu on any outside click.
   useEffect(() => {
     if (!menu) return;
