@@ -42,6 +42,9 @@ interface Tab {
   showSql: boolean;
   result: QueryResult | null;
   currentTable: TableRef | null;
+  // The active sort (ADR 0008): live, renderer-only view state — never persisted,
+  // so a restored tab reloads in natural order.
+  sort: { column: string; desc: boolean } | null;
   error: string | null;
 }
 
@@ -54,6 +57,7 @@ function makeTab(): Tab {
     showSql: false,
     result: null,
     currentTable: null,
+    sort: null,
     error: null,
   };
 }
@@ -155,6 +159,7 @@ export function App(): JSX.Element {
           showSql: t.showSql,
           currentTable: t.currentTable,
           result: null,
+          sort: null,
           error: null,
         }));
         setTabs(restored);
@@ -262,6 +267,7 @@ export function App(): JSX.Element {
     tabId: string,
     connId: string,
     table: TableRef,
+    orderBy?: { column: string; desc: boolean },
   ): Promise<void> {
     try {
       const res = await window.api.loadRows({
@@ -269,10 +275,14 @@ export function App(): JSX.Element {
         table,
         limit: 500,
         offset: 0,
+        orderBy,
       });
       updateTab(tabId, {
         result: res,
         currentTable: table,
+        // Commit the active sort only on a successful load, so the header arrow
+        // is always a fact about the rows on screen (ADR 0008).
+        sort: orderBy ?? null,
         error: null,
         title: table.name,
       });
@@ -308,7 +318,22 @@ export function App(): JSX.Element {
 
   function reload(): void {
     if (activeId && active.currentTable)
-      loadTable(active.id, activeId, active.currentTable);
+      loadTable(
+        active.id,
+        activeId,
+        active.currentTable,
+        active.sort ?? undefined,
+      );
+  }
+
+  // Re-fetch the active table browse with a new active sort (ADR 0008). Sorting is
+  // server-side (ORDER BY) so "top N" means the table's true top N, not the loaded
+  // window's; loadTable commits the indicator only on a successful load.
+  function sortTable(
+    orderBy: { column: string; desc: boolean } | undefined,
+  ): void {
+    if (activeId && active.currentTable)
+      loadTable(active.id, activeId, active.currentTable, orderBy);
   }
 
   async function switchDatabase(db: string): Promise<void> {
@@ -522,6 +547,8 @@ export function App(): JSX.Element {
             key={active.id}
             connectionId={activeId}
             result={visibleResult}
+            sort={active.sort}
+            onSort={sortTable}
             onReload={reload}
           />
         ) : active.error ? (

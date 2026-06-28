@@ -77,7 +77,7 @@ data, plus a SQL editor.
 - Keyset pagination
 - **Grid virtualization** (`@tanstack/react-virtual`) — add when result sets
   exceed the 500-row page cap; the grid is on TanStack Table already
-- **Sorting / column resize** in the grid
+- **Column resize** in the grid (sorting now scoped — see "Sorting" below)
 
 ## Open (business layer — decide before launch, not before coding)
 
@@ -239,6 +239,41 @@ Decisions fixed during design:
    `onOpenSql(source)` (existing un-run SQL-tab path), titling the tab by the
    routine name. A dropped routine (fetch fails) surfaces a per-tab error, same as
    a dropped-table restore.
+
+## Sorting (table browser) — build steps (next pass)
+
+Click a column header to sort a browsed table. Sorting is **server-side** (the
+[[active sort]]): it re-fetches the page with an `ORDER BY` so "top N" means the
+table's true top N, not the loaded window's. The SQL plumbing already exists
+(`buildLoadRows`, `LoadRowsRequest.orderBy`, the `loadRows` pass-through), so this
+pass is **renderer-only**. See [ADR 0008](./docs/adr/0008-sorting-blocked-while-dirty.md).
+
+Decisions fixed during design (all in ADR 0008):
+
+- **Server-side, single-column.** Contract stays `orderBy?: { column; desc }`;
+  multi-column (`{column,desc}[]` + shift-click) deferred.
+- **Three-state header cycle** — unsorted → asc → desc → unsorted; the third click
+  clears the sort (no `ORDER BY`, natural order).
+- **Blocked while the grid is dirty.** Sort headers are inert when
+  `countChanges > 0` (staged edits are page-index-keyed; a re-fetch reorders rows).
+  Tooltip: commit or discard first. We rejected re-mapping edits by row identity.
+- **Indicator commits after a successful re-fetch**, never optimistically — the
+  arrow always reflects the rows on screen; a failed sort (e.g. `ORDER BY` a `json`
+  column) leaves the prior order and arrow intact via the existing error path.
+- **Table browser only** (gated on `result.table`); SQL-editor results keep their
+  user-authored `ORDER BY`.
+- **Ephemeral** — the active sort lives only in the renderer; not persisted, so a
+  restored [[tab]] reloads in natural order. No `PersistedTab` change.
+
+1. **Tab state** — `App.tsx` holds an in-memory active sort per browsed tab
+   (`{ column; desc } | undefined`). `loadTable` takes an `orderBy` param and
+   passes it to `window.api.loadRows`; set the active sort only on a successful
+   load. `reload()` preserves the current sort.
+2. **Sort callback** — pass an `onSort(orderBy | undefined)` prop into `DataGrid`;
+   it calls back up to `App` to re-fetch (no client-side reordering in the grid).
+3. **Header UI** — in `DataGrid`, make headers clickable when `result.table` is
+   present **and** `countChanges === 0`: three-state cycle, asc/desc arrow on the
+   active column, disabled-with-tooltip styling while dirty.
 
 ## Tab keyboard shortcuts — build steps ✅
 

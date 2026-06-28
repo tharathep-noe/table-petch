@@ -67,6 +67,21 @@ Separate from [[type category]] because they don't collapse — an integer is
 `number` _and_ safe; a double is `number` _and_ unsafe.
 _Avoid_: comparable, exact, lossless
 
+### Browsing & the read path
+
+**Active sort**:
+The single column and direction by which a browsed table's rows are ordered _at
+the source_ before the page is taken — not a reordering of the rows already
+loaded. Because the read path always takes the first page (`offset 0`) of a
+capped window, sorting at the source is what makes "top N by this column" mean
+the table's true top N, not the loaded window's. A table has at most one active
+sort at a time (single-column); clearing it returns the table to its natural,
+unspecified order. Belongs only to a browsed [[tab]] (a known, re-queryable
+table) — never to an arbitrary SQL result, where the user owns the `ORDER BY`.
+The active sort is live view state: it lives only in the renderer and is _not_
+persisted, so a restored [[tab]] reloads in natural order.
+_Avoid_: ordering (ambiguous with row identity / WHERE ordering), client sort
+
 ### Editing & the write path
 
 **Staged change**:

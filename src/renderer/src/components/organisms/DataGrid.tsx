@@ -32,6 +32,10 @@ import { Modal } from '../molecules/Modal';
 interface Props {
   connectionId: string;
   result: QueryResult;
+  /** The active sort, for the header arrow; null when unsorted. */
+  sort: { column: string; desc: boolean } | null;
+  /** Re-fetch the table with a new sort; undefined clears it (natural order). */
+  onSort: (orderBy: { column: string; desc: boolean } | undefined) => void;
   onReload: () => void;
 }
 
@@ -60,6 +64,8 @@ const cellCls =
 export function DataGrid({
   connectionId,
   result,
+  sort,
+  onSort,
   onReload,
 }: Props): JSX.Element {
   const editable = result.editable && !!result.table;
@@ -164,6 +170,19 @@ export function DataGrid({
     result.columns.findIndex((c) => c.name === name);
   const newRowOf = (tempId: number): NewRow | undefined =>
     newRows.find((r) => r.tempId === tempId);
+
+  // Sorting is server-side and table-browser-only, and is blocked while the grid
+  // has staged changes — staged edits are page-index-keyed and a sort re-fetch
+  // reorders rows (ADR 0008). Headers are inert (with a tooltip) while dirty.
+  const sortable = !!result.table;
+  const canSort = sortable && counts.total === 0;
+  function cycleSort(colName: string): void {
+    if (!canSort) return; // unsorted → asc → desc → unsorted
+    if (!sort || sort.column !== colName)
+      onSort({ column: colName, desc: false });
+    else if (!sort.desc) onSort({ column: colName, desc: true });
+    else onSort(undefined);
+  }
 
   function addRow(): void {
     const tempId = tempIdRef.current--;
@@ -516,11 +535,26 @@ export function DataGrid({
               </th>
               {table.getFlatHeaders().map((h) => {
                 const meta = colMeta.get(h.column.id);
+                const arrow =
+                  sort?.column === h.column.id ? (sort.desc ? '▼' : '▲') : null;
                 return (
                   <th
                     key={h.id}
-                    title={meta?.dataType}
-                    className={`${cellCls} bg-panel sticky top-0`}
+                    title={
+                      sortable && !canSort
+                        ? 'Commit or discard changes before sorting'
+                        : meta?.dataType
+                    }
+                    onClick={
+                      sortable ? () => cycleSort(h.column.id) : undefined
+                    }
+                    className={`${cellCls} bg-panel sticky top-0 ${
+                      sortable
+                        ? canSort
+                          ? 'cursor-pointer hover:bg-border/40'
+                          : 'cursor-not-allowed opacity-60'
+                        : ''
+                    }`}
                   >
                     {meta?.isPrimaryKey ? '🔑 ' : ''}
                     {h.column.id}
@@ -529,6 +563,9 @@ export function DataGrid({
                         {' '}
                         *
                       </span>
+                    ) : null}
+                    {arrow ? (
+                      <span className="text-accent"> {arrow}</span>
                     ) : null}
                   </th>
                 );
