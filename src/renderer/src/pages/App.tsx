@@ -368,7 +368,7 @@ export function App(): JSX.Element {
     setTabs((ts) => [...ts, t]);
     setActiveTabId(t.id);
     window.api
-      .getRoutineSource(activeId, routine.oid)
+      .getRoutineSource(activeId, routine.handle)
       .then((sql) => updateTab(t.id, { sqlText: sql, error: null }))
       .catch((e) =>
         updateTab(t.id, { error: e instanceof Error ? e.message : String(e) }),

@@ -18,6 +18,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "mysql2": "^3.22.5",
     "pg": "^8.13.1"
   },
   "devDependencies": {

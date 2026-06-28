@@ -6,6 +6,67 @@ everywhere.
 
 ## Language
 
+### Engines & drivers (multi-engine)
+
+**Engine**:
+The database product a connection targets — one of **Postgres**, **MySQL**,
+**MSSQL** (SQL Server), or **Oracle**. An [[engine]] determines the [[driver]],
+the [[dialect]], and how the [[catalog]]/[[schema]] levels are filled. A
+connection targets exactly one engine, fixed at creation.
+_Avoid_: database type, vendor, flavor, db (ambiguous with catalog)
+
+**Driver**:
+The main-process adapter for one [[engine]] — the only engine-specific code below
+the IPC seam. A driver owns its native client/pool, its catalog introspection,
+its value text-normalization (native JS → canonical text and back), and its
+[[dialect]]. The renderer and the IPC contract never name an engine; they speak
+to the driver abstraction.
+_Avoid_: adapter, connector, backend, provider
+
+**Dialect**:
+The small value object a [[driver]] supplies for the _mechanical_ SQL differences
+the shared CRUD builders need: identifier quoting, placeholder style, and
+pagination. It is not a SQL builder — it is the per-engine knobs the one shared
+builder turns. A driver may override a whole builder method only when a dialect
+genuinely can't be parameterized (e.g. Oracle pagination).
+_Avoid_: syntax, grammar, flavor
+
+**Catalog**:
+The top namespace level under a server, above [[schema]]. The canonical object
+path is **server → catalog → schema → object**, and each [[driver]] maps its
+engine onto it: Postgres/MSSQL catalog = a _database_; MySQL catalog = a
+_database_ (and the schema level is synthetic, since MySQL has no separate
+schema); Oracle catalog = the _service/instance_ and schema = a _user_. The
+catalog switcher replaces the old Postgres-only "database switcher".
+_Avoid_: database (use only inside a driver, never in the shared model)
+
+**Capabilities**:
+The descriptor a [[driver]] advertises so the renderer can adapt without ever
+naming an [[engine]] (e.g. whether catalogs are switchable or single, whether the
+server lists its catalogs, whether multi-statement scripts run in one call,
+whether [[routine]]s are supported). The UI hides or disables affordances from
+this data alone. Adding an engine never edits the renderer.
+_Avoid_: feature flags, support matrix
+
+**Type category**:
+A driver-derived classification of a column's type into one engine-neutral bucket
+— `text`, `number`, `boolean`, `temporal`, `json`, `binary`, `lob`, `uuid`, or
+`other`. Distinct from a column's `dataType`, which is the engine's own type name
+kept for **display only**. The category drives type-aware UI (the JSON
+cell-expander now; per-type editors later) so the renderer never branches on an
+engine's type names.
+_Avoid_: data type (that is the raw display string), type affinity
+
+**Text round-trip safe**:
+A per-column boolean a [[driver]] sets: whether the column's value survives the
+native → canonical-text → native round-trip exactly enough to match in a `WHERE`.
+Floats, decimals, money, binary, LOBs, and some datetimes are _not_ safe. It
+drives the all-columns commit warning (the keyless [[row identity]] path): an
+unsafe column in that `WHERE` escalates the warning or is excluded from the match.
+Separate from [[type category]] because they don't collapse — an integer is
+`number` _and_ safe; a double is `number` _and_ unsafe.
+_Avoid_: comparable, exact, lossless
+
 ### Editing & the write path
 
 **Staged change**:
@@ -58,10 +119,14 @@ The umbrella term for a user-defined **function** or **procedure** stored in the
 database (Postgres `pg_proc`, `prokind in ('f','p')`). The canonical name across
 the renderer, the IPC contract, and the database layer — chosen over "function"
 (which would overload the `kind`) to match the SQL standard (`information_schema.routines`,
-`DROP ROUTINE`). A routine is identified by `RoutineRef { schema, name, kind }`,
-mirroring [[tab]]/`TableRef`. Only user-defined routines in non-system schemas are
-listed (the same schema filter as tables); aggregates and window functions are out
-of scope for now.
+`DROP ROUTINE`). A routine is identified by an opaque, driver-defined
+`handle` carried on `RoutineRef` (Postgres `oid`, MSSQL `object_id`,
+MySQL/Oracle qualified name — see
+[ADR 0006](docs/adr/0006-multi-engine-driver-architecture.md));
+`schema`/`name`/`kind` are for display, mirroring [[tab]]/`TableRef`. Only
+user-defined routines in non-system schemas are listed (the driver-owned system
+filter). **Standalone routines only** — Oracle package members, aggregates, and
+window functions are out of scope for now.
 _Avoid_: function (as an umbrella), proc, stored proc, sproc
 
 **Routine kind**:

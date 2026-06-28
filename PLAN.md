@@ -69,7 +69,7 @@ data, plus a SQL editor.
 
 ## Deferred (post-v1)
 
-- MySQL / SQLite engines
+- SQLite engine (MySQL / MSSQL / Oracle now scoped — see "Multi-engine" below)
 - SSH tunnel / SSL certificates
 - Materialized views, sequences, types, indexes in the tree (functions &
   procedures now scoped — see "Routines" below)
@@ -255,6 +255,45 @@ application menu in the main process, not a renderer keydown, because macOS bind
 3. **Preload** — bridge the two `on…` subscriptions over `ipcRenderer.on`. ✅
 4. **Renderer** — `App.tsx` subscribes: new-tab → `newTab()`; close-tab →
    `closeTab(active)` when >1 tab, else `window.close()`. ✅
+
+## Multi-engine (MySQL / MSSQL / Oracle) — design fixed, build pending
+
+Postgres becomes the first **driver** behind an engine-neutral abstraction, not the
+baseline. The renderer and IPC contract never name an engine. See ADR 0006 and the
+glossary ([[engine]], [[driver]], [[dialect]], [[catalog]], [[capabilities]]).
+
+Decisions fixed during design (all in [ADR 0006](./docs/adr/0006-multi-engine-driver-architecture.md)):
+
+- **Namespace is always 3-level** `server → catalog → schema → object`; each driver
+  collapses levels it lacks. The "database switcher" becomes the **catalog switcher**.
+- **`string | null` cell contract kept**; each driver owns native→text normalization
+  (binary/LOB → non-editable sentinel for now).
+- **Shared CRUD builders + a per-driver `Dialect`** (quote / placeholder / paginate);
+  whole-method override only where a dialect can't be parameterized (Oracle paging).
+- **`ConnectionConfig` is a discriminated union per engine**; the modal renders the
+  right form per engine.
+- **Routines identified by an opaque `handle: string`**, not the pg `oid`
+  (supersedes ADR 0004's identity field).
+- **Keyless edit path stays**; a driver flags text-unsafe columns and escalates the
+  all-columns commit warning.
+- **Each driver advertises a `Capabilities` descriptor** (catalog switching,
+  multi-statement, routines, `sqlDialect`); the renderer adapts from data, never an
+  engine name.
+- **All four drivers bundled, lazy-loaded on first use**; `oracledb` pinned to
+  pure-JS thin mode. Existing engine-less connections default to the postgres variant.
+
+Build order (per ADR 0006): (1) shared types — `Capabilities`, engine-union
+`ConnectionConfig`, `catalog` on `TableRef`/`SchemaInfo`, `handle` on `RoutineRef`;
+(2) extract a `Driver` interface and refactor the Postgres code into the first driver
+
+- driver registry; (3) `Dialect` value object + shared CRUD builders; (4) per-engine
+  introspection — **native catalogs uniformly** (`pg_catalog` / `sys.*` / `ALL_*` /
+  `SHOW`+`STATISTICS`), eager per active catalog, driver-owned system filter,
+  `category` + `textRoundTripSafe` on `ColumnMeta`, standalone routines only; see
+  [ADR 0007](./docs/adr/0007-per-engine-introspection.md); (5) the
+  non-PG drivers one at a time; (6) capabilities-gated renderer (catalog switcher,
+  editor dialect, disabled affordances); (7) connection-modal per-engine forms +
+  load-time migration.
 
 ## Suggested build order
 

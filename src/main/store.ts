@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron';
 import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import type { ConnectionConfig, ConnectionInput } from '@shared/types';
+import type { ConnectionConfig, ConnectionInput, Engine } from '@shared/types';
 import * as history from './historyStore';
 
 // Connection metadata lives in a JSON file under userData.
@@ -21,7 +21,15 @@ function load(): Persisted {
   const path = file();
   if (!existsSync(path)) return { connections: [], secrets: {} };
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Persisted;
+    const data = JSON.parse(readFileSync(path, 'utf8')) as Persisted;
+    // Lazy migration (ADR 0006): records predating multi-engine have no engine
+    // field — coerce them to postgres (the only engine that existed), per record
+    // so one bad record can't wipe the rest. Rewritten on next save. Typed loose
+    // because the discriminant defeats narrowing on data that may lack it.
+    for (const c of data.connections as Array<{ engine?: Engine }>) {
+      if (!c.engine) c.engine = 'postgres';
+    }
+    return data;
   } catch {
     return { connections: [], secrets: {} };
   }
@@ -40,15 +48,9 @@ export function listConnections(): ConnectionConfig[] {
 export function saveConnection(input: ConnectionInput): ConnectionConfig {
   const data = load();
   const id = input.id ?? randomUUID();
-  const config: ConnectionConfig = {
-    id,
-    name: input.name,
-    host: input.host,
-    port: input.port,
-    database: input.database,
-    user: input.user,
-    ssl: input.ssl,
-  };
+  // Persist the engine-specific variant as-is, minus the write-only password.
+  const config = { ...input, id } as ConnectionConfig;
+  delete (config as { password?: string }).password;
 
   const idx = data.connections.findIndex((c) => c.id === id);
   if (idx >= 0) data.connections[idx] = config;

@@ -303,7 +303,7 @@ function DatabaseView({
                   <div className="flex flex-col gap-0.5 ms-1.5 ps-2 border-s border-border">
                     {s.routines.map((r) => (
                       <div
-                        key={r.oid}
+                        key={r.handle}
                         className="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer text-sm text-text/90 hover:bg-border/60 transition-colors"
                         onClick={() => onOpenRoutine(r)}
                         title={`${r.schema}.${r.name}(${r.signature})`}

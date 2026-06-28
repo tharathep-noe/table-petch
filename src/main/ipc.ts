@@ -36,16 +36,16 @@ export function registerIpc(): void {
   );
 
   ipcMain.handle(CH.listSchema, (_e, id: string) => listSchema(id));
-  ipcMain.handle(CH.getRoutineSource, (_e, id: string, oid: number) =>
-    getRoutineSource(id, oid),
+  ipcMain.handle(CH.getRoutineSource, (_e, id: string, handle: string) =>
+    getRoutineSource(id, handle),
   );
   ipcMain.handle(CH.loadRows, (_e, req: LoadRowsRequest) => loadRows(req));
   ipcMain.handle(CH.runQuery, (_e, id: string, sql: string) =>
     runQuery(id, sql),
   );
 
-  ipcMain.handle(CH.prepareChanges, (_e, _id: string, changes: Change[]) =>
-    prepareChanges(changes),
+  ipcMain.handle(CH.prepareChanges, (_e, id: string, changes: Change[]) =>
+    prepareChanges(id, changes),
   );
   ipcMain.handle(CH.commitChanges, (_e, id: string, changes: Change[]) =>
     commitChanges(id, changes),

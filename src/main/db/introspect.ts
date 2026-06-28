@@ -1,228 +1,26 @@
-import { getPool } from './manager';
-import type {
-  ColumnMeta,
-  RoutineRef,
-  SchemaInfo,
-  TableRef,
-} from '@shared/types';
+import { ensureConnected, getSession } from './manager';
+import type { SchemaInfo } from '@shared/types';
 
-// Introspection queries against the Postgres catalog. Kept read-only.
+// Shared introspection orchestration. The engine-specific catalog queries live
+// in each Driver; this just assembles the SchemaInfo and routes routine-source
+// fetches to the active connection's driver.
 
 export async function listSchema(connectionId: string): Promise<SchemaInfo> {
-  const pool = getPool(connectionId);
-
-  const dbsP = pool.query<{ datname: string }>(
-    `select datname from pg_database where datistemplate = false order by datname`,
-  );
-  const currentP = pool.query<{ current_database: string }>(
-    `select current_database()`,
-  );
-  const objsP = pool.query<{ schema: string; name: string; kind: string }>(
-    `select n.nspname as schema, c.relname as name,
-            case c.relkind when 'r' then 'table' when 'v' then 'view' else c.relkind::text end as kind
-       from pg_class c
-       join pg_namespace n on n.oid = c.relnamespace
-      where c.relkind in ('r','v')
-        and n.nspname not in ('pg_catalog','information_schema')
-        and n.nspname not like 'pg_toast%'
-      order by n.nspname, c.relname`,
-  );
-
-  // User-defined functions and procedures (prokind 'f'/'p') in user schemas.
-  // oid is exact identity (names overload); identity_arguments is for display.
-  const routinesP = pool.query<{
-    schema: string;
-    name: string;
-    kind: string;
-    oid: string;
-    signature: string;
-  }>(
-    `select n.nspname as schema, p.proname as name,
-            case p.prokind when 'f' then 'function' when 'p' then 'procedure' end as kind,
-            p.oid::text as oid,
-            pg_get_function_identity_arguments(p.oid) as signature
-       from pg_proc p
-       join pg_namespace n on n.oid = p.pronamespace
-      where p.prokind in ('f','p')
-        and n.nspname not in ('pg_catalog','information_schema')
-        and n.nspname not like 'pg_toast%'
-      order by n.nspname, p.proname, signature`,
-  );
-
-  const [dbs, current, objs, routines] = await Promise.all([
-    dbsP,
-    currentP,
-    objsP,
-    routinesP,
+  const { driver, conn, catalog } = await ensureConnected(connectionId);
+  const [catalogs, schemas] = await Promise.all([
+    driver.capabilities.listsCatalogs
+      ? driver.listCatalogs(conn)
+      : Promise.resolve([catalog]),
+    driver.introspectObjects(conn),
   ]);
-
-  const tablesBySchema = new Map<string, TableRef[]>();
-  for (const r of objs.rows) {
-    const list = tablesBySchema.get(r.schema) ?? [];
-    list.push({
-      schema: r.schema,
-      name: r.name,
-      kind: r.kind as TableRef['kind'],
-    });
-    tablesBySchema.set(r.schema, list);
-  }
-
-  const routinesBySchema = new Map<string, RoutineRef[]>();
-  for (const r of routines.rows) {
-    const list = routinesBySchema.get(r.schema) ?? [];
-    list.push({
-      schema: r.schema,
-      name: r.name,
-      kind: r.kind as RoutineRef['kind'],
-      oid: Number(r.oid),
-      signature: r.signature,
-    });
-    routinesBySchema.set(r.schema, list);
-  }
-
-  // Union of schema names: a schema may hold only routines, or only tables.
-  const schemaNames = [
-    ...new Set([...tablesBySchema.keys(), ...routinesBySchema.keys()]),
-  ].sort();
-
-  return {
-    database: current.rows[0].current_database,
-    databases: dbs.rows.map((r) => r.datname),
-    schemas: schemaNames.map((name) => ({
-      name,
-      tables: tablesBySchema.get(name) ?? [],
-      routines: routinesBySchema.get(name) ?? [],
-    })),
-  };
+  return { database: catalog, databases: catalogs, schemas };
 }
 
-/** The `CREATE OR REPLACE …` definition of a routine, by oid. Read-only. */
+/** The source definition of a routine, by its opaque handle. Read-only. */
 export async function getRoutineSource(
   connectionId: string,
-  oid: number,
+  handle: string,
 ): Promise<string> {
-  const pool = getPool(connectionId);
-  const { rows } = await pool.query<{ def: string }>(
-    `select pg_get_functiondef($1) as def`,
-    [oid],
-  );
-  if (rows.length === 0 || rows[0].def == null) {
-    throw new Error(`Routine ${oid} not found (it may have been dropped).`);
-  }
-  return rows[0].def;
-}
-
-export interface TableColumns {
-  columns: ColumnMeta[];
-  /** Column-name sets that uniquely identify a row (primary key + unique
-   *  indexes). Used to build a precise WHERE for UPDATE/DELETE. */
-  uniqueKeys: string[][];
-}
-
-// The connection pool returns every value as raw text (so the grid renders
-// text), which means catalog booleans arrive as "t"/"f" and array_agg() arrives
-// as a "{a,b}" string. These helpers turn them back into real JS types.
-function toBool(v: unknown): boolean {
-  return v === true || v === 't' || v === 'true';
-}
-
-/** Parse a Postgres array literal like {id} or {"a,b",c} into a string[]. */
-function parsePgArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v as string[];
-  if (typeof v !== 'string') return [];
-  const inner = v.replace(/^\{/, '').replace(/\}$/, '');
-  if (inner === '') return [];
-  const out: string[] = [];
-  let i = 0;
-  while (i < inner.length) {
-    if (inner[i] === '"') {
-      i++;
-      let s = '';
-      while (i < inner.length && inner[i] !== '"') {
-        if (inner[i] === '\\') i++;
-        s += inner[i++];
-      }
-      i++; // closing quote
-      out.push(s);
-    } else {
-      let s = '';
-      while (i < inner.length && inner[i] !== ',') s += inner[i++];
-      out.push(s);
-    }
-    if (inner[i] === ',') i++;
-  }
-  return out;
-}
-
-/** Columns + primary-key + unique-constraint info for one table. */
-export async function getColumns(
-  connectionId: string,
-  table: TableRef,
-): Promise<TableColumns> {
-  const pool = getPool(connectionId);
-  // NOTE: indkey is int2vector, which unnest() does NOT accept. Use
-  // `attnum = any(i.indkey)`, the canonical idiom, instead.
-  const columnsP = pool.query<{
-    name: string;
-    data_type: string;
-    nullable: unknown;
-    is_pk: unknown;
-    has_default: unknown;
-    is_generated: unknown;
-  }>(
-    `select a.attname as name,
-            format_type(a.atttypid, a.atttypmod) as data_type,
-            not a.attnotnull as nullable,
-            coalesce(bool_or(i.indisprimary), false) as is_pk,
-            a.atthasdef as has_default,
-            (a.attgenerated <> '' or a.attidentity = 'a') as is_generated
-       from pg_attribute a
-       join pg_class c on c.oid = a.attrelid
-       join pg_namespace n on n.oid = c.relnamespace
-       left join pg_index i
-         on i.indrelid = a.attrelid and i.indisprimary and a.attnum = any(i.indkey)
-      where n.nspname = $1 and c.relname = $2
-        and a.attnum > 0 and not a.attisdropped
-      group by a.attname, a.atttypid, a.atttypmod, a.attnotnull, a.attnum,
-               a.atthasdef, a.attgenerated, a.attidentity
-      order by a.attnum`,
-    [table.schema, table.name],
-  );
-
-  // Every unique index (primary key included), as column-name sets.
-  const uniqueP = pool.query<{ cols: unknown }>(
-    `select array_agg(a.attname) as cols
-       from pg_index i
-       join pg_class c on c.oid = i.indrelid
-       join pg_namespace n on n.oid = c.relnamespace
-       join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
-      where i.indisunique and c.relname = $2 and n.nspname = $1
-        and i.indpred is null               -- skip partial indexes
-        and i.indexprs is null              -- skip expression indexes
-      group by i.indexrelid`,
-    [table.schema, table.name],
-  );
-
-  const [{ rows }, unique] = await Promise.all([columnsP, uniqueP]);
-
-  // De-dup: the join above can repeat rows when multiple pk columns exist.
-  const seen = new Set<string>();
-  const cols: ColumnMeta[] = [];
-  for (const r of rows) {
-    if (seen.has(r.name)) continue;
-    seen.add(r.name);
-    cols.push({
-      name: r.name,
-      dataType: r.data_type,
-      nullable: toBool(r.nullable),
-      isPrimaryKey: toBool(r.is_pk),
-      hasDefault: toBool(r.has_default),
-      isGenerated: toBool(r.is_generated),
-    });
-  }
-
-  return {
-    columns: cols,
-    uniqueKeys: unique.rows.map((r) => parsePgArray(r.cols)),
-  };
+  const { driver, conn } = getSession(connectionId);
+  return driver.getRoutineSource(conn, handle);
 }

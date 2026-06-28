@@ -1,24 +1,85 @@
 // Shared types: the contract between renderer and main. No runtime deps here.
 
-export interface ConnectionConfig {
+/** The database product a connection targets (see CONTEXT.md "Engine"). */
+export type Engine = 'postgres' | 'mysql' | 'mssql' | 'oracle';
+
+/** Fields every engine shares. Password is never stored here in plaintext; it
+ *  lives in safeStorage. `engine` is fixed at creation (CONTEXT.md "Engine"). */
+interface BaseConn {
   id: string;
   name: string;
   host: string;
   port: number;
-  database: string;
   user: string;
   ssl?: boolean;
-  /** Password is never stored here in plaintext; it lives in safeStorage. */
 }
 
-export interface ConnectionInput extends Omit<ConnectionConfig, 'id'> {
-  id?: string;
-  password?: string;
+export interface PostgresConn extends BaseConn {
+  engine: 'postgres';
+  database: string;
 }
+
+export interface MysqlConn extends BaseConn {
+  engine: 'mysql';
+  database: string;
+}
+
+export interface MssqlConn extends BaseConn {
+  engine: 'mssql';
+  database: string;
+  /** Named instance, e.g. "SQLEXPRESS" (host\instance). Optional. */
+  instance?: string;
+  /** TLS encryption; defaults on for SQL Server. */
+  encrypt?: boolean;
+}
+
+export interface OracleConn extends BaseConn {
+  engine: 'oracle';
+  /** Oracle connects by service name (preferred) or SID, not a "database". */
+  serviceName?: string;
+  sid?: string;
+}
+
+/** A saved connection — a discriminated union on `engine` (ADR 0006). Existing
+ *  engine-less records are migrated to the postgres variant on load. */
+export type ConnectionConfig =
+  | PostgresConn
+  | MysqlConn
+  | MssqlConn
+  | OracleConn;
+
+/** The shape sent to saveConnection/testConnection: a config without a persisted
+ *  id, plus the (write-only) password. */
+type AsInput<T> = Omit<T, 'id'> & { id?: string; password?: string };
+
+export type ConnectionInput =
+  | AsInput<PostgresConn>
+  | AsInput<MysqlConn>
+  | AsInput<MssqlConn>
+  | AsInput<OracleConn>;
+
+/** Engine-neutral classification of a column's type, derived by the driver.
+ *  Drives type-aware UI (the JSON expander now; per-type editors later) so the
+ *  renderer never branches on an engine's type names. See CONTEXT.md. */
+export type TypeCategory =
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'temporal'
+  | 'json'
+  | 'binary'
+  | 'lob'
+  | 'uuid'
+  | 'other';
 
 export interface ColumnMeta {
   name: string;
-  dataType: string; // postgres type name, e.g. "int4", "jsonb", "timestamptz"
+  dataType: string; // engine-native type name, e.g. "int4"/"varchar" — DISPLAY ONLY
+  /** Engine-neutral category for type-aware UI (driver-derived). */
+  category: TypeCategory;
+  /** Whether native→text→native round-trips exactly enough to match in a WHERE.
+   *  False for floats/binary/LOB/some datetimes; drives the all-columns warning. */
+  textRoundTripSafe: boolean;
   nullable: boolean;
   isPrimaryKey: boolean;
   /** Column has a DEFAULT (or identity sequence) — may be omitted on INSERT. */
@@ -28,22 +89,42 @@ export interface ColumnMeta {
 }
 
 export interface TableRef {
+  /** Top namespace level (server → catalog → schema → object). Optional: single
+   *  active catalog today, so the driver fills it. See CONTEXT.md "Catalog". */
+  catalog?: string;
   schema: string;
   name: string;
   kind: 'table' | 'view';
 }
 
-/** A user-defined function or procedure. Identified by `oid` (name is not unique
- *  — Postgres allows overloading); `signature` is for display only. */
+/** A user-defined function or procedure. Identified by an opaque, driver-defined
+ *  `handle` (Postgres oid, MSSQL object_id, MySQL/Oracle qualified name);
+ *  `signature` is for display only. See ADR 0006. */
 export interface RoutineRef {
   schema: string;
   name: string;
   kind: 'function' | 'procedure';
-  /** pg_proc oid — exact identity, passed to getRoutineSource. Session-local. */
-  oid: number;
+  /** Opaque driver identity, passed straight back to getRoutineSource. */
+  handle: string;
   /** Identity arguments for display, e.g. "integer, integer". Distinguishes
    *  overloads in the tree; not used for identity. */
   signature: string;
+}
+
+/** What a driver can do, so the renderer adapts from data, never an engine name
+ *  (ADR 0006). Surfaced to the renderer in a later increment. */
+export interface Capabilities {
+  engine: Engine;
+  /** Whether the active connection can switch catalogs (vs a single fixed one). */
+  catalogs: 'switchable' | 'single';
+  /** Whether the server lists its other catalogs for the switcher. */
+  listsCatalogs: boolean;
+  /** Whether one runQuery may contain multiple statements. */
+  multiStatement: boolean;
+  /** Whether routines are surfaced in the tree. */
+  routines: boolean;
+  /** CodeMirror SQL dialect token for the editor. */
+  sqlDialect: Engine;
 }
 
 export interface SchemaInfo {
@@ -202,8 +283,9 @@ export interface TablePetchApi {
   switchDatabase(connectionId: string, database: string): Promise<void>;
 
   listSchema(connectionId: string): Promise<SchemaInfo>;
-  /** The `CREATE OR REPLACE …` definition of a routine, fetched on click. */
-  getRoutineSource(connectionId: string, oid: number): Promise<string>;
+  /** The `CREATE OR REPLACE …` definition of a routine, fetched on click. The
+   *  handle is the opaque driver identity from RoutineRef. */
+  getRoutineSource(connectionId: string, handle: string): Promise<string>;
   loadRows(req: LoadRowsRequest): Promise<QueryResult>;
   runQuery(connectionId: string, sql: string): Promise<QueryResult>;
 
