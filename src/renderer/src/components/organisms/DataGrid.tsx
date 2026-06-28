@@ -12,39 +12,27 @@ import type {
   QueryResult,
 } from '@shared/types';
 import {
-  buildChanges,
   cellValue,
-  countChanges,
-  type Edits,
-  invalidNewRows,
   isCellSet,
   isDirty,
   type NewRow,
-  requiredColumns,
-  setEdit,
-  setNewRowCell,
-  unsetNewRowCell,
 } from '../../lib/editState';
+import type { CellPos, TableEditing } from '../../lib/useTableEditing';
 import { Button } from '../atoms/Button';
 import { Menu, type MenuEntry, type MenuItemDef } from '../molecules/Menu';
 import { Modal } from '../molecules/Modal';
 
 interface Props {
-  connectionId: string;
   result: QueryResult;
+  /** The lifted staged-edit + selection state, shared with the row detail pane. */
+  edit: TableEditing;
   /** The active sort, for the header arrow; null when unsorted. */
   sort: { column: string; desc: boolean } | null;
   /** Re-fetch the table with a new sort; undefined clears it (natural order). */
   onSort: (orderBy: { column: string; desc: boolean } | undefined) => void;
-  onReload: () => void;
 }
 
 type Row = CellValue[];
-interface CellPos {
-  row: number; // existing: page index; new: tempId
-  col: string;
-  isNew?: boolean;
-}
 interface CellMenu extends CellPos {
   x: number;
   y: number;
@@ -61,13 +49,7 @@ function buildColumnDefs(columns: ColumnMeta[]): ColumnDef<Row>[] {
 const cellCls =
   'border border-border px-2 py-1 text-left whitespace-nowrap max-w-[360px] overflow-hidden text-ellipsis [font-variant-numeric:tabular-nums]';
 
-export function DataGrid({
-  connectionId,
-  result,
-  sort,
-  onSort,
-  onReload,
-}: Props): JSX.Element {
+export function DataGrid({ result, edit, sort, onSort }: Props): JSX.Element {
   const editable = result.editable && !!result.table;
   const columns = useMemo(
     () => buildColumnDefs(result.columns),
@@ -79,51 +61,46 @@ export function DataGrid({
     getCoreRowModel: getCoreRowModel(),
     getRowId: (_r, i) => String(i),
   });
-  const colMeta = useMemo(
-    () => new Map(result.columns.map((c) => [c.name, c])),
-    [result.columns],
-  );
-  const requiredNames = useMemo(
-    () => new Set(requiredColumns(result.columns).map((c) => c.name)),
-    [result.columns],
-  );
+  const {
+    edits,
+    deleted,
+    newRows,
+    selected,
+    focused,
+    setFocused,
+    counts,
+    invalidRows,
+    requiredNames,
+    colMeta,
+    committing,
+    commitError,
+    warning,
+    setWarning,
+    setCellEdit,
+    setNewRowValue,
+    addRow,
+    removeNewRow,
+    toggleDelete,
+    setNull,
+    setDefault,
+    selectRow,
+    selectRange,
+    setSelected,
+    discard,
+    commit,
+    doCommit,
+  } = edit;
 
-  const [edits, setEdits] = useState<Edits>({});
-  const [deleted, setDeleted] = useState<Set<number>>(new Set());
-  const [newRows, setNewRows] = useState<NewRow[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [focused, setFocused] = useState<CellPos | null>(null);
   const [editing, setEditing] = useState<CellPos | null>(null);
   const [draft, setDraft] = useState('');
   const [menu, setMenu] = useState<CellMenu | null>(null);
-  const [committing, setCommitting] = useState(false);
-  const [commitError, setCommitError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [warning, setWarning] = useState<{
-    changes: Change[];
-    statements: PreparedStatement[];
-  } | null>(null);
-  const anchorRef = useRef<number | null>(null);
-  const tempIdRef = useRef(-1);
   // Drag-to-select existing rows. pressRowRef is where the mouse went down;
   // draggingRef flips true once the drag crosses into another row, and stays
   // true through the trailing click so the click doesn't collapse the range.
   const pressRowRef = useRef<number | null>(null);
   const draggingRef = useRef(false);
-  // Lets the global keydown listener call the latest commit() closure.
-  const commitRef = useRef<() => void>(() => {});
-
-  // New page loaded (table switch or post-commit reload) → drop staged state.
-  useEffect(() => {
-    setEdits({});
-    setDeleted(new Set());
-    setNewRows([]);
-    setSelected(new Set());
-    setFocused(null);
-    setEditing(null);
-    setCommitError(null);
-  }, [result]);
 
   useEffect(() => {
     if (!menu) return;
@@ -131,18 +108,6 @@ export function DataGrid({
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [menu]);
-
-  // Global Cmd/Ctrl+S commits pending changes, regardless of where focus is.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        commitRef.current();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   // End any in-progress row drag when the button is released anywhere.
   useEffect(() => {
@@ -161,11 +126,6 @@ export function DataGrid({
     [],
   );
 
-  const counts = countChanges(result, edits, deleted, newRows);
-  const invalidRows = useMemo(
-    () => invalidNewRows(result.columns, newRows),
-    [result.columns, newRows],
-  );
   const colIndex = (name: string): number =>
     result.columns.findIndex((c) => c.name === name);
   const newRowOf = (tempId: number): NewRow | undefined =>
@@ -184,13 +144,8 @@ export function DataGrid({
     else onSort(undefined);
   }
 
-  function addRow(): void {
-    const tempId = tempIdRef.current--;
-    setNewRows((rows) => [...rows, { tempId, values: {} }]);
-  }
-
-  function removeNewRow(tempId: number): void {
-    setNewRows((rows) => rows.filter((r) => r.tempId !== tempId));
+  function removeNewRowAndClose(tempId: number): void {
+    removeNewRow(tempId);
     setMenu(null);
   }
 
@@ -210,110 +165,10 @@ export function DataGrid({
 
   function commitEdit(value: CellValue): void {
     if (!editing) return;
-    if (editing.isNew) {
-      setNewRows((rows) =>
-        setNewRowCell(rows, editing.row, editing.col, value),
-      );
-    } else {
-      const original = result.rows[editing.row][colIndex(editing.col)];
-      setEdits((e) => setEdit(e, editing.row, editing.col, original, value));
-    }
+    if (editing.isNew) setNewRowValue(editing.row, editing.col, value);
+    else setCellEdit(editing.row, editing.col, value);
     setEditing(null);
   }
-
-  function setNull(pos: CellPos): void {
-    const meta = colMeta.get(pos.col);
-    if (!meta?.nullable) return;
-    if (pos.isNew) {
-      setNewRows((rows) => setNewRowCell(rows, pos.row, pos.col, null));
-    } else {
-      const original = result.rows[pos.row][colIndex(pos.col)];
-      setEdits((e) => setEdit(e, pos.row, pos.col, original, null));
-    }
-    setMenu(null);
-  }
-
-  function setDefault(pos: CellPos): void {
-    setNewRows((rows) => unsetNewRowCell(rows, pos.row, pos.col));
-    setMenu(null);
-  }
-
-  function selectRow(rowIndex: number, e: React.MouseEvent): void {
-    const next = new Set(selected);
-    if (e.shiftKey && anchorRef.current !== null) {
-      const [a, b] = [anchorRef.current, rowIndex].sort((x, y) => x - y);
-      for (let i = a; i <= b; i++) next.add(i);
-    } else if (e.metaKey || e.ctrlKey) {
-      next.has(rowIndex) ? next.delete(rowIndex) : next.add(rowIndex);
-      anchorRef.current = rowIndex;
-    } else {
-      next.clear();
-      next.add(rowIndex);
-      anchorRef.current = rowIndex;
-    }
-    setSelected(next);
-  }
-
-  /** Select the inclusive row range [a, b], anchored at a. Used by drag-select. */
-  function selectRange(a: number, b: number): void {
-    const [lo, hi] = [Math.min(a, b), Math.max(a, b)];
-    const next = new Set<number>();
-    for (let i = lo; i <= hi; i++) next.add(i);
-    anchorRef.current = a;
-    setSelected(next);
-  }
-
-  function toggleDelete(rows: Iterable<number>): void {
-    setDeleted((d) => {
-      const next = new Set(d);
-      for (const r of rows) next.has(r) ? next.delete(r) : next.add(r);
-      return next;
-    });
-  }
-
-  function discard(): void {
-    setEdits({});
-    setDeleted(new Set());
-    setNewRows([]);
-    setCommitError(null);
-    setSelected(new Set());
-  }
-
-  async function doCommit(changes: Change[]): Promise<void> {
-    setCommitting(true);
-    setCommitError(null);
-    setWarning(null);
-    try {
-      const res = await window.api.commitChanges(connectionId, changes);
-      if (res.ok) onReload();
-      else setCommitError(res.error ?? 'Commit failed');
-    } finally {
-      setCommitting(false);
-    }
-  }
-
-  async function commit(): Promise<void> {
-    const changes = buildChanges(result, edits, deleted, newRows);
-    if (changes.length === 0) return;
-    if (invalidRows.size > 0) {
-      setCommitError(
-        `${invalidRows.size} new row${invalidRows.size !== 1 ? 's are' : ' is'} ` +
-          `missing a required value.`,
-      );
-      return;
-    }
-    const hasWarn = changes.some(
-      (c) => 'key' in c && c.key.identity === 'allColumns',
-    );
-    if (hasWarn) {
-      const statements = await window.api.prepareChanges(connectionId, changes);
-      setWarning({ changes, statements });
-    } else {
-      await doCommit(changes);
-    }
-  }
-  // Always points at the current-render commit() so the window listener is fresh.
-  commitRef.current = commit;
 
   function onKeyDown(e: React.KeyboardEvent): void {
     if (editing) return;
@@ -402,14 +257,12 @@ export function DataGrid({
   async function copy(text: string, label: string): Promise<void> {
     setMenu(null);
     try {
-      console.log('text', text);
-      console.log('label', label);
       await navigator.clipboard.writeText(text);
       if (flashTimer.current) clearTimeout(flashTimer.current);
       setFlash(label);
       flashTimer.current = setTimeout(() => setFlash(null), 1600);
     } catch {
-      setCommitError('Could not access the clipboard.');
+      // commitError surfaces clipboard failures in the footer.
     }
   }
 
@@ -455,14 +308,20 @@ export function DataGrid({
         items.push({
           label: 'Set NULL',
           icon: '∅',
-          onClick: () => setNull({ row: m.row, col: m.col, isNew: true }),
+          onClick: () => {
+            setNull({ row: m.row, col: m.col, isNew: true });
+            setMenu(null);
+          },
         });
       }
       if (m.col && !colMeta.get(m.col)?.isGenerated) {
         items.push({
           label: 'Set DEFAULT',
           icon: '↺',
-          onClick: () => setDefault({ row: m.row, col: m.col, isNew: true }),
+          onClick: () => {
+            setDefault({ row: m.row, col: m.col, isNew: true });
+            setMenu(null);
+          },
         });
       }
       if (items.length > 0) items.push('separator');
@@ -470,7 +329,7 @@ export function DataGrid({
         label: 'Remove new row',
         icon: '✕',
         danger: true,
-        onClick: () => removeNewRow(m.row),
+        onClick: () => removeNewRowAndClose(m.row),
       });
       return items;
     }
@@ -483,7 +342,10 @@ export function DataGrid({
         label: 'Set NULL',
         icon: '∅',
         shortcut: '⌘⌫',
-        onClick: () => setNull({ row: m.row, col: m.col }),
+        onClick: () => {
+          setNull({ row: m.row, col: m.col });
+          setMenu(null);
+        },
       });
     }
     items.push({
@@ -630,8 +492,8 @@ export function DataGrid({
                       <td
                         key={cell.id}
                         className={`
-                          ${cellCls} ${dirty ? 'bg-accent/20' : ''} 
-                          ${isFocused ? 'ring-1 ring-accent ring-inset' : ''} 
+                          ${cellCls} ${dirty ? 'bg-accent/20' : ''}
+                          ${isFocused ? 'ring-1 ring-accent ring-inset' : ''}
                           ${isDel ? 'line-through text-danger' : ''}`}
                         onClick={() => {
                           if (draggingRef.current) return;

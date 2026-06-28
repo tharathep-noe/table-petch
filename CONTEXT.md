@@ -82,6 +82,31 @@ The active sort is live view state: it lives only in the renderer and is _not_
 persisted, so a restored [[tab]] reloads in natural order.
 _Avoid_: ordering (ambiguous with row identity / WHERE ordering), client sort
 
+### The row detail pane
+
+**Row detail pane**:
+A toggleable, resizable right-hand pane that shows the [[active row]]'s columns as
+a vertical field list — one always-on input per column — so a wide row can be read
+and edited without the grid's horizontal scroll. It is a _second editing surface_,
+not a separate one: every field writes into the same [[staged change]] set as the
+grid and is committed by the grid's one footer Commit/Discard, so the two surfaces
+never diverge. It is the home for long/JSON values the grid truncates (it absorbs
+the old "cell expander modal"). The pane is global (one instance, bound to the
+active [[tab]]'s editing state), but its _content_ is per-tab. Generated/identity
+columns are shown locked; nullable fields carry an explicit Set-NULL action
+(an empty input is `''`, never NULL). Existing rows only — composing a [[new row]]
+stays in the grid. Its open flag and width persist in the [[session]]; the active
+row it shows does not (it is reconstructed from selection).
+_Avoid_: record preview, record pane, inspector (read-only connotation), row form
+
+**Active row**:
+The single existing row the [[row detail pane]] reflects: the anchor of the grid's
+selection (the last-clicked row), even when several rows are selected. Live view
+state, like the [[active sort]] — renderer-only, never persisted; it resets to
+none whenever the result changes (reload, sort, commit, table switch). A staged
+[[new row]] is never the active row.
+_Avoid_: current record, focused row (that is a single cell), selected row
+
 ### Editing & the write path
 
 **Staged change**:

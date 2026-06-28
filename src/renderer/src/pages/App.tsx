@@ -15,6 +15,8 @@ import { TabBar } from '../components/organisms/TabBar';
 import { Toolbar } from '../components/organisms/Toolbar';
 import { SqlEditor } from '../components/organisms/SqlEditor';
 import { DataGrid } from '../components/organisms/DataGrid';
+import { RecordDetailPane } from '../components/organisms/RecordDetailPane';
+import { useTableEditing } from '../lib/useTableEditing';
 import { ConnectionModal } from '../components/organisms/ConnectionModal';
 import { Menu } from '../components/molecules/Menu';
 import { Modal } from '../components/molecules/Modal';
@@ -48,6 +50,15 @@ interface Tab {
   error: string | null;
 }
 
+// A stable empty result so the editing hook (which keys its reset effect on the
+// result's identity) doesn't reset every render while no table is loaded.
+const EMPTY_RESULT: QueryResult = {
+  columns: [],
+  rows: [],
+  rowCount: 0,
+  editable: false,
+};
+
 function makeTab(): Tab {
   return {
     id: crypto.randomUUID(),
@@ -70,6 +81,11 @@ export function App(): JSX.Element {
   const [menu, setMenu] = useState<ConnMenuState | null>(null);
   const [filterShown, setFilterShown] = useState(false);
   const [filterText, setFilterText] = useState('');
+
+  // The row detail pane (ADR 0009). Open flag + width persist in the session; the
+  // active row it shows does not (it's reconstructed from the grid selection).
+  const [recordPaneOpen, setRecordPaneOpen] = useState(false);
+  const [recordPaneWidth, setRecordPaneWidth] = useState(380);
 
   // Saved-query library (global) and the active connection's history.
   const [sidebarView, setSidebarView] = useState<SidebarView>('database');
@@ -167,6 +183,11 @@ export function App(): JSX.Element {
           restored.find((t) => t.id === saved.activeTabId) ?? restored[0];
         setActiveTabId(focus.id);
 
+        if (saved.recordPane) {
+          setRecordPaneOpen(saved.recordPane.open);
+          setRecordPaneWidth(saved.recordPane.width);
+        }
+
         const connId = saved.activeConnectionId;
         if (!connId) return;
         try {
@@ -203,11 +224,12 @@ export function App(): JSX.Element {
           showSql: t.showSql,
           currentTable: t.currentTable,
         })),
+        recordPane: { open: recordPaneOpen, width: recordPaneWidth },
       };
       void window.api.saveSession(payload);
     }, 500);
     return () => clearTimeout(handle);
-  }, [hydrated, tabs, activeTabId, activeId]);
+  }, [hydrated, tabs, activeTabId, activeId, recordPaneOpen, recordPaneWidth]);
 
   // Block the browser's "select all" (Cmd/Ctrl+A) from highlighting the whole
   // window chrome. Still allowed inside real text editors (inputs, textareas,
@@ -325,6 +347,17 @@ export function App(): JSX.Element {
         active.sort ?? undefined,
       );
   }
+
+  // One staged-edit + selection state machine for the active tab's result, shared
+  // by the grid and the row detail pane (ADR 0009). Fed the SAME visibleResult the
+  // grid renders, so indices align; it resets on any result-identity change (table
+  // switch, sort, reload, tab switch, filter), as before the lift.
+  const tableEditing = useTableEditing(
+    visibleResult ?? EMPTY_RESULT,
+    activeId,
+    reload,
+    () => setRecordPaneOpen(true), // clicking a row reveals the detail pane
+  );
 
   // Re-fetch the active table browse with a new active sort (ADR 0008). Sorting is
   // server-side (ORDER BY) so "top N" means the table's true top N, not the loaded
@@ -488,6 +521,17 @@ export function App(): JSX.Element {
           onClearAllHistory={clearAllHistory}
         />
       }
+      rightPane={
+        recordPaneOpen && visibleResult ? (
+          <RecordDetailPane
+            result={visibleResult}
+            edit={tableEditing}
+            width={recordPaneWidth}
+            onResize={setRecordPaneWidth}
+            onClose={() => setRecordPaneOpen(false)}
+          />
+        ) : undefined
+      }
     >
       <TabBar
         tabs={tabs}
@@ -503,6 +547,9 @@ export function App(): JSX.Element {
         onToggleSql={() => updateTab(active.id, { showSql: !active.showSql })}
         filterShown={filterShown}
         onToggleFilter={() => setFilterShown((v) => !v)}
+        hasResult={!!visibleResult}
+        recordPaneShown={recordPaneOpen}
+        onToggleRecordPane={() => setRecordPaneOpen((v) => !v)}
         error={active.error}
       />
 
@@ -545,11 +592,10 @@ export function App(): JSX.Element {
         {visibleResult && activeId ? (
           <DataGrid
             key={active.id}
-            connectionId={activeId}
             result={visibleResult}
+            edit={tableEditing}
             sort={active.sort}
             onSort={sortTable}
-            onReload={reload}
           />
         ) : active.error ? (
           <div className="p-6 text-danger whitespace-pre-wrap">

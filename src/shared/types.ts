@@ -222,6 +222,10 @@ export interface PersistedSession {
   activeConnectionId: string | null;
   activeTabId: string;
   tabs: PersistedTab[];
+  /** The row detail pane's open flag and width (ADR 0009). Live view state — the
+   *  active row it shows is never persisted, only these two scalars. Optional so
+   *  an older session.json loads fine; absence means "closed, default width". */
+  recordPane?: { open: boolean; width: number };
 }
 
 // ---- Query history (automatic, per-connection run log) ----

@@ -275,6 +275,48 @@ Decisions fixed during design (all in ADR 0008):
    present **and** `countChanges === 0`: three-state cycle, asc/desc arrow on the
    active column, disabled-with-tooltip styling while dirty.
 
+## Row detail pane — build steps ✅
+
+A toggleable, resizable right-hand pane showing the [[active row]]'s columns as a
+vertical list of always-on inputs, editing into the **same** staged-change set as
+the grid and committed by the grid's one footer Commit/Discard. Existing rows
+only; it absorbs the deferred cell-expander modal. See
+[ADR 0009](./docs/adr/0009-row-detail-pane.md).
+
+Decisions fixed during design (all in ADR 0009):
+
+- **Second surface, one change set.** Edit state lifts out of `DataGrid` into a
+  `useTableEditing(result, connectionId)` hook owned by `App`; `DataGrid` and the
+  new pane are pure consumers. No second commit button.
+- **Global pane, per-tab content.** One pane in the `AppLayout` shell, bound to
+  the active [[tab]]'s hook instance; remounts on tab switch, so edits reset on
+  switch (as today). **Active row** = the grid selection's anchor; resets to none
+  on any result change.
+- **Always-on inputs.** Empty input = `''`; NULL only via an explicit Set-NULL
+  action. Generated/identity columns shown locked. Long/JSON values get a growing
+  textarea (replaces the cell-expander modal).
+- **Existing rows only** — new-row composition stays in the grid.
+- **Open flag + width persist** in `session.json` (`recordPane: { open, width }`);
+  the active row does not.
+
+1. **Lift edit state** — extracted `src/renderer/src/lib/useTableEditing.ts` from
+   `DataGrid` (the `edits`/`newRows`/`deleted`/`selected`/`focused` cluster +
+   `commit`/`discard`/`countChanges`, plus the global Cmd+S commit); `App` owns one
+   instance for the active tab, `DataGrid` consumes its output as props. The hook
+   also owns selection so the pane's **active row** = the selection anchor. ✅
+2. **Shared contract** — added `recordPane?: { open: boolean; width: number }` to
+   `PersistedSession`; `sessionStore` load stays fail-safe (optional field). ✅
+3. **Pane component** — `RecordDetailPane.tsx`: vertical field list of the active
+   row, always-on growing textareas, locked generated columns (and locked when the
+   row is staged-deleted, with a banner), explicit Set-NULL (`∅`) and Set-value
+   affordances, dirty highlight mirroring the grid. ✅
+4. **Layout** — `AppLayout` grew an optional `rightPane` slot; the pane carries its
+   own left-edge resize splitter (first one in the app). Opened by **clicking a
+   row** (the hook's `onSelect` gesture callback) or the `Toolbar`'s `Row detail`
+   toggle; closed by the toggle or the pane's `✕`. ✅
+5. **Persistence wiring** — `recordPane` open/width ride the existing debounced
+   session-save effect in `App.tsx`; restored on hydrate. ✅
+
 ## Tab keyboard shortcuts — build steps ✅
 
 `Cmd+T` opens a new [[tab]]; `Cmd+W` closes the current one. Driven by a custom
