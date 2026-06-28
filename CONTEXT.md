@@ -1,6 +1,7 @@
 # table-petch
 
-A Postgres GUI client. This glossary fixes the language used across the renderer,
+A multi-engine database GUI client (Postgres and MySQL today; MSSQL and Oracle
+scaffolded). This glossary fixes the language used across the renderer,
 the IPC contract, and the database layer so the same concept has the same name
 everywhere.
 

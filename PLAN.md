@@ -1,7 +1,8 @@
 # table-petch — Plan
 
-A shippable, sellable Postgres GUI client (TablePlus-like): view, update, and delete
-data, plus a SQL editor.
+A shippable, sellable multi-engine database GUI client (TablePlus-like): view,
+update, and delete data, plus a SQL editor. Postgres and MySQL are supported
+today; MSSQL and Oracle are scaffolded behind the same driver abstraction.
 
 ## v1 scope
 
@@ -15,7 +16,8 @@ data, plus a SQL editor.
 
 - **Electron** + **electron-vite** build tooling
 - **React + TypeScript** renderer (sandboxed: `contextIsolation` on, no Node)
-- **`pg`** driver runs in the **main process**
+- Native drivers (**`pg`**, **`mysql2`**) run in the **main process**, behind an
+  engine-neutral `Driver` abstraction
 - Renderer ⇄ main over a **typed IPC/RPC bridge** via `preload` + `contextBridge`
   (`connect`, `disconnect`, `listSchema`, `runQuery`, `loadRows`, `commitChanges`)
 - Grid: **TanStack Table + Virtual**
